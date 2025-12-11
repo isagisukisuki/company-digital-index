@@ -102,7 +102,8 @@ def load_year_data(file_path, year):
 
 def main():
     st.title("企业数字化转型指数查询系统")
-    file_path = r"C:\Users\43474\Desktop\大数据\数字化转型指数分析结果.xlsx"
+    # 核心修改：替换为云端相对路径
+    file_path = "./数字化转型指数分析结果.xlsx"
     
     # 1. 获取所有有效年份（工作表名）
     try:

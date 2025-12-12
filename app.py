@@ -9,12 +9,12 @@ import os
 pd.set_option('display.unicode.ambiguous_as_wide', True)
 pd.set_option('display.unicode.east_asian_width', True)
 
-# ====================== 路径配置（已按你的需求修改）======================
-DIGITAL_TRANSFORMATION_FILE = r"C:\Users\43474\Desktop\大数据\数字化转型指数分析结果.xlsx"  # 你的数据文件路径
-# （注：原代码中WORD_FREQ_FILE等未实际使用，若不需要可保留或删除）
-WORD_FREQ_FILE = r"C:\Users\43474\Desktop\大数据\数字化转型指数分析结果.xlsx"  # 若需要可同步修改
-PY_FILE_PATH = r"C:\Users\43474\Desktop\大数据\app.py"  # 若你的app.py在这个路径，同步修改
-ROOT_FOLDER = r"C:\Users\43474\Desktop\大数据"  # 数据所在文件夹
+# ====================== 路径配置（改为相对路径，适配云端部署）======================
+# 注意：需将"数字化转型指数分析结果.xlsx"和app.py放在同一目录下
+DIGITAL_TRANSFORMATION_FILE = "数字化转型指数分析结果.xlsx"  # 仅保留文件名（相对路径）
+WORD_FREQ_FILE = "数字化转型指数分析结果.xlsx"  # 同步改为相对路径（若无需使用可保留）
+PY_FILE_PATH = "app.py"  # 主文件相对路径
+ROOT_FOLDER = "./"  # 根目录为当前文件夹
 # =====================================================================
 
 # 工具函数：生成Excel下载文件
@@ -32,7 +32,7 @@ def generate_company_report(company_name, company_data, full_trend_data):
     total_years = len(available_years)
     
     index_analysis = {"max_index":0, "max_year":"无", "avg_index":0, "latest_index":0, "trend":"无数据"}
-    if "数字化转型综合指数" in company_data.columns and not company_data.empty:  # 字段名改为你的“数字化转型综合指数”
+    if "数字化转型综合指数" in company_data.columns and not company_data.empty:
         max_val = company_data["数字化转型综合指数"].max()
         max_year_df = company_data[company_data["数字化转型综合指数"] == max_val]
         index_analysis["max_index"] = round(max_val, 2)
@@ -93,7 +93,7 @@ def load_full_data(file_path):
     try:
         df = pd.read_excel(
             file_path,
-            sheet_name="Sheet1",  # 若你的工作表不是Sheet1，需改为实际名称（比如图中显示的“2023”）
+            sheet_name="Sheet1",  # 若你的工作表不是Sheet1，需改为实际名称（如"2023"）
             engine="openpyxl"
         )
         # 清洗数据（兼容文本/数字格式的年份）
@@ -119,9 +119,10 @@ def get_all_years(full_data):
 def main():
     st.title("企业数字化转型指数查询系统")
     
-    # 验证文件是否存在
+    # 验证文件是否存在（本地/云端通用）
     if not os.path.exists(DIGITAL_TRANSFORMATION_FILE):
-        st.error(f"❌ 文件不存在：{DIGITAL_TRANSFORMATION_FILE}")
+        st.error(f"❌ 数据文件不存在：{DIGITAL_TRANSFORMATION_FILE}")
+        st.info("请确认：1. 数据文件与app.py在同一目录；2. 文件名拼写完全一致（包括后缀）")
         return
     
     # 读取完整数据
@@ -182,7 +183,7 @@ def main():
     industry_avg_data = []
     for year in all_years:
         year_data = full_data[full_data["年份"] == year]
-        if not year_data.empty and "数字化转型综合指数" in year_data.columns:  # 字段名改为你的“数字化转型综合指数”
+        if not year_data.empty and "数字化转型综合指数" in year_data.columns:
             avg_idx = year_data["数字化转型综合指数"].mean()
         else:
             avg_idx = 0
@@ -202,18 +203,18 @@ def main():
         full_years_df = pd.DataFrame({"年份": all_years})
         company_trend = pd.merge(
             full_years_df,
-            company_all_data[["年份", "数字化转型综合指数"]],  # 字段名改为你的“数字化转型综合指数”
+            company_all_data[["年份", "数字化转型综合指数"]],
             on="年份",
             how="left"
         ).fillna(0)
 
         # 展示趋势图
         st.subheader(f"📈 {selected_company}（{stock_code if stock_code else '未知代码'}）转型指数趋势")
-        st.line_chart(company_trend.set_index("年份")["数字化转型综合指数"], use_container_width=True, color="#FF6B6B", height=500)  # 字段名同步修改
+        st.line_chart(company_trend.set_index("年份")["数字化转型综合指数"], use_container_width=True, color="#FF6B6B", height=500)
         
         # 展示历年完整数据
         st.subheader(f"📋 {selected_company} 历年完整数据")
-        display_columns = ["年份", "股票代码", "数字化转型综合指数", "人工智能词频数", "大数据词频数", "云计算词频数", "区块链词频数", "数字技术运用词频数"]  # 字段名同步修改
+        display_columns = ["年份", "股票代码", "数字化转型综合指数", "人工智能词频数", "大数据词频数", "云计算词频数", "区块链词频数", "数字技术运用词频数"]
         # 筛选存在的列
         display_columns = [col for col in display_columns if col in company_all_data.columns]
         company_detail = company_all_data[display_columns].sort_values("年份").reset_index(drop=True)

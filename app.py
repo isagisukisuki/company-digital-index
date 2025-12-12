@@ -28,7 +28,6 @@ def generate_company_report(company_name, company_data, full_trend_data):
     total_years = len(available_years)
     
     index_analysis = {"max_index":0, "max_year":"无", "avg_index":0, "latest_index":0, "trend":"无数据"}
-    # 修正：字段名改为你的“数字化转型综合指数”
     if "数字化转型综合指数" in company_data.columns and not company_data.empty:
         max_val = company_data["数字化转型综合指数"].max()
         max_year_df = company_data[company_data["数字化转型综合指数"] == max_val]
@@ -85,22 +84,32 @@ def generate_company_report(company_name, company_data, full_trend_data):
 """
     return report, full_trend_data
 
-# 读取完整数据（修正：工作表名改为你的纯数字名，比如“1999”）
+# 读取完整数据（核心修改：读取Excel中所有工作表，并合并为一个DataFrame）
 def load_full_data(file_path):
     try:
-        df = pd.read_excel(
+        # 读取Excel中所有工作表，工作表名作为“年份”列的值
+        all_sheets = pd.read_excel(
             file_path,
-            sheet_name="1999",  # 改为你的工作表名（如“1999”）
+            sheet_name=None,  # sheet_name=None 表示读取所有工作表
             engine="openpyxl"
         )
-        # 清洗数据（兼容文本/数字格式的年份）
-        if "年份" in df.columns:
-            df["年份"] = pd.to_numeric(df["年份"], errors='coerce').fillna(df["年份"]).astype(str).str.strip()
-        if "企业名称" in df.columns:
-            df["企业名称"] = df["企业名称"].str.strip()
-        if "股票代码" in df.columns:
-            df["股票代码"] = df["股票代码"].astype(str).str.strip()
-        return df.dropna(how="all").reset_index(drop=True)
+        
+        # 遍历所有工作表，合并成一个DataFrame，并添加“年份”列（值为工作表名）
+        merged_df = pd.DataFrame()
+        for sheet_year, sheet_data in all_sheets.items():
+            # 给当前工作表的数据添加“年份”列，值为工作表名（比如“1999”“2000”）
+            sheet_data["年份"] = str(sheet_year).strip()
+            # 合并到总DataFrame
+            merged_df = pd.concat([merged_df, sheet_data], ignore_index=True)
+        
+        # 数据清洗
+        if "企业名称" in merged_df.columns:
+            merged_df["企业名称"] = merged_df["企业名称"].str.strip()
+        if "股票代码" in merged_df.columns:
+            merged_df["股票代码"] = merged_df["股票代码"].astype(str).str.strip()
+        
+        # 去除全空行
+        return merged_df.dropna(how="all").reset_index(drop=True)
     except Exception as e:
         st.error(f"❌ 读取数据失败：{str(e)}")
         return pd.DataFrame()
@@ -121,13 +130,13 @@ def main():
         st.info("请确认：1. 数据文件与app.py在同一目录；2. 文件名拼写正确")
         return
     
-    # 读取完整数据
+    # 读取完整数据（现在会读取所有工作表）
     full_data = load_full_data(DIGITAL_TRANSFORMATION_FILE)
     if full_data.empty:
         st.error("❌ 数据为空，请检查Excel文件内容")
         return
 
-    # 获取所有年份
+    # 获取所有年份（现在会包含所有工作表对应的年份）
     all_years = get_all_years(full_data)
     if not all_years:
         st.error("❌ 数据中无有效年份")
@@ -174,12 +183,11 @@ def main():
     else:
         st.info(f"ℹ️ {selected_year}年数据中无匹配企业，请调整查询条件")
 
-    # 全行业平均指数趋势图
+    # 全行业平均指数趋势图（现在会显示所有年份）
     st.subheader("📊 全行业转型指数趋势")
     industry_avg_data = []
     for year in all_years:
         year_data = full_data[full_data["年份"] == year]
-        # 修正：字段名改为“数字化转型综合指数”
         if not year_data.empty and "数字化转型综合指数" in year_data.columns:
             avg_idx = year_data["数字化转型综合指数"].mean()
         else:
@@ -191,14 +199,13 @@ def main():
     industry_avg_df = pd.DataFrame(industry_avg_data)
     st.line_chart(industry_avg_df.set_index("年份")["平均指数"], use_container_width=True, color="#2E86AB", height=400)
 
-    # 企业全量趋势图：输入股票代码/名称后自动展示
+    # 企业全量趋势图：输入股票代码后自动展示（现在会显示企业所有年份数据）
     if not company_all_data.empty:
         # 获取企业名称
         selected_company = company_all_data["企业名称"].unique()[0] if len(company_all_data["企业名称"].unique()) > 0 else "未知企业"
         
         # 补全所有年份的趋势数据
         full_years_df = pd.DataFrame({"年份": all_years})
-        # 修正：字段名改为“数字化转型综合指数”
         company_trend = pd.merge(
             full_years_df,
             company_all_data[["年份", "数字化转型综合指数"]],
@@ -212,7 +219,6 @@ def main():
         
         # 展示历年完整数据
         st.subheader(f"📋 {selected_company} 历年完整数据")
-        # 修正：字段名改为“数字化转型综合指数”
         display_columns = ["年份", "股票代码", "数字化转型综合指数", "人工智能词频数", "大数据词频数", "云计算词频数", "区块链词频数", "数字技术运用词频数"]
         display_columns = [col for col in display_columns if col in company_all_data.columns]
         company_detail = company_all_data[display_columns].sort_values("年份").reset_index(drop=True)

@@ -10,11 +10,10 @@ pd.set_option('display.unicode.ambiguous_as_wide', True)
 pd.set_option('display.unicode.east_asian_width', True)
 
 # ====================== 路径配置（改为相对路径，适配云端部署）======================
-# 注意：需将"数字化转型指数分析结果.xlsx"和app.py放在同一目录下
-DIGITAL_TRANSFORMATION_FILE = "数字化转型指数分析结果.xlsx"  # 仅保留文件名（相对路径）
-WORD_FREQ_FILE = "数字化转型指数分析结果.xlsx"  # 同步改为相对路径（若无需使用可保留）
-PY_FILE_PATH = "app.py"  # 主文件相对路径
-ROOT_FOLDER = "./"  # 根目录为当前文件夹
+DIGITAL_TRANSFORMATION_FILE = "数字化转型指数分析结果.xlsx"
+WORD_FREQ_FILE = "数字化转型指数分析结果.xlsx"
+PY_FILE_PATH = "app.py"
+ROOT_FOLDER = "./"
 # =====================================================================
 
 # 工具函数：生成Excel下载文件
@@ -88,17 +87,16 @@ def generate_company_report(company_name, company_data, full_trend_data):
 """
     return report, full_trend_data
 
-# 读取完整数据（匹配你的工作表名称）
+# 读取完整数据（修改为你的纯数字工作表名，比如“1999”）
 def load_full_data(file_path):
     try:
         df = pd.read_excel(
             file_path,
-            sheet_name="Sheet1",  # 若你的工作表不是Sheet1，需改为实际名称（如"2023"）
+            sheet_name="1999",  # 这里改成你的工作表名（比如“1999”）
             engine="openpyxl"
         )
         # 清洗数据（兼容文本/数字格式的年份）
         if "年份" in df.columns:
-            # 尝试将年份转为整数，避免字符串格式问题
             df["年份"] = pd.to_numeric(df["年份"], errors='coerce').fillna(df["年份"]).astype(str).str.strip()
         if "企业名称" in df.columns:
             df["企业名称"] = df["企业名称"].str.strip()

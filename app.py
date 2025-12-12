@@ -90,7 +90,7 @@ def generate_company_report(company_name, company_data, full_trend_data):
     return report, full_trend_data
 
 
-# 读取完整数据（优化：读取所有工作表+快速合并+数据类型优化）
+# 读取完整数据（优化：读取所有工作表+快速合并+数据类型优化+空值处理）
 @st.cache_data(ttl=3600)  # 缓存数据，大幅提升加载速度
 def load_full_data(file_path):
     try:
@@ -118,6 +118,10 @@ def load_full_data(file_path):
             [sheet.assign(年份=sheet_name) for sheet_name, sheet in all_sheets.items()],
             ignore_index=True
         )
+        
+        # 处理空值：将“总词频数”的空值替换为0
+        if "总词频数" in merged_df.columns:
+            merged_df["总词频数"] = merged_df["总词频数"].fillna(0).astype(np.int32)
         
         # 轻量清洗（仅去空行）
         merged_df = merged_df.dropna(how="all").reset_index(drop=True)

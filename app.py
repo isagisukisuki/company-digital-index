@@ -119,9 +119,11 @@ def load_full_data(file_path):
             ignore_index=True
         )
         
-        # 处理空值：将“总词频数”的空值替换为0
-        if "总词频数" in merged_df.columns:
-            merged_df["总词频数"] = merged_df["总词频数"].fillna(0).astype(np.int32)
+        # 处理空值：将词频列+总词频数的空值替换为0
+        target_cols = ["人工智能词频数", "大数据词频数", "云计算词频数", "区块链词频数", "数字技术运用词频数", "总词频数"]
+        for col in target_cols:
+            if col in merged_df.columns:
+                merged_df[col] = merged_df[col].fillna(0).astype(np.int32)
         
         # 轻量清洗（仅去空行）
         merged_df = merged_df.dropna(how="all").reset_index(drop=True)

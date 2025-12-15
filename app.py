@@ -14,6 +14,18 @@ pd.set_option('display.unicode.east_asian_width', True)
 DIGITAL_TRANSFORMATION_FILE = "数字化转型指数分析结果.xlsx"
 # =====================================================================
 
+# 【关键】你需要保留的列名（手动填写Excel中实际需要的列，其他列会被删除）
+RETAIN_COLUMNS = [
+    "企业名称",
+    "股票代码",
+    "数字化转型综合指数",
+    "人工智能词频数",
+    "大数据词频数",
+    "云计算词频数",
+    "区块链词频数",
+    "数字技术运用词频数"
+]
+
 # 工具函数：生成Excel下载文件
 def to_excel(df):
     output = BytesIO()
@@ -24,10 +36,7 @@ def to_excel(df):
 
 # 生成企业综合报告
 def generate_company_report(company_name, company_data, full_trend_data):
-    # 只从原始数据中提取必要信息，不新增列
     stock_code = company_data["股票代码"].iloc[0] if ("股票代码" in company_data.columns and not company_data.empty) else "未知"
-    
-    # 临时提取年份（不显示在最终表格）
     temp_years = company_data["_年份临时列"].unique() if "_年份临时列" in company_data.columns else []
     available_years = sorted(temp_years)
     total_years = len(available_years)
@@ -52,12 +61,7 @@ def generate_company_report(company_name, company_data, full_trend_data):
             else:
                 index_analysis["trend"] = "数据基数为0，无法计算趋势"
     
-    # 只读取Excel中存在的词频列
-    word_freq_cols = []
-    for col in ["人工智能词频数", "大数据词频数", "云计算词频数", "区块链词频数", "数字技术运用词频数"]:
-        if col in company_data.columns:
-            word_freq_cols.append(col)
-    
+    word_freq_cols = [col for col in RETAIN_COLUMNS if col.endswith("词频数")]
     word_freq_data = {col: 0 for col in word_freq_cols}
     if not company_data.empty:
         for col in word_freq_cols:
@@ -89,7 +93,7 @@ def generate_company_report(company_name, company_data, full_trend_data):
 """
     return report, full_trend_data
 
-# 读取完整数据（仅保留Excel原始列，年份列临时存储不显示）
+# 读取完整数据（仅保留指定列）
 def load_full_data(file_path):
     try:
         if not os.path.exists(file_path):
@@ -104,28 +108,25 @@ def load_full_data(file_path):
         
         df_list = []
         for sheet in sheet_names:
-            # 只读取Excel原始列，不新增任何列
+            # 读取Excel并仅保留指定列
             sheet_df = pd.read_excel(file_path, sheet_name=sheet, engine='openpyxl')
-            # 年份列用临时名称，仅用于内部计算，不显示在表格
+            # 只保留RETAIN_COLUMNS中的列（过滤无关列）
+            sheet_df = sheet_df[[col for col in RETAIN_COLUMNS if col in sheet_df.columns]]
+            # 年份列临时存储
             sheet_df["_年份临时列"] = sheet
-            # 修正股票代码格式（仅处理Excel中存在的列）
+            # 修正股票代码格式
             if "股票代码" in sheet_df.columns:
                 sheet_df["股票代码"] = sheet_df["股票代码"].astype(str).str.zfill(6)
-            # 只保留Excel原始列 + 临时年份列
             df_list.append(sheet_df)
         
         full_df = pd.concat(df_list, ignore_index=True)
-        
-        # 清洗空值（仅处理Excel中存在的列）
-        if "企业名称" in full_df.columns:
-            full_df["企业名称"] = full_df["企业名称"].str.strip()
         full_df = full_df.fillna(0)
         return full_df.dropna(how="all").reset_index(drop=True)
     except Exception as e:
         st.error(f"❌ 读取数据失败：{str(e)}")
         return pd.DataFrame()
 
-# 获取所有年份（从临时列提取）
+# 获取所有年份
 def get_all_years(full_data):
     if "_年份临时列" not in full_data.columns:
         st.error("❌ 数据中无有效年份")
@@ -159,37 +160,34 @@ def main():
     # 筛选企业数据
     company_all_data = pd.DataFrame()
     filter_cond = full_data["_年份临时列"] == selected_year
-    if stock_code:
-        if "股票代码" in full_data.columns:
-            company_all_data = full_data[(full_data["股票代码"] == stock_code.strip().zfill(6)) & filter_cond].copy()
-    elif company_name:
-        if "企业名称" in full_data.columns:
-            company_all_data = full_data[(full_data["企业名称"].str.contains(company_name.strip(), na=False)) & filter_cond].copy()
+    if stock_code and "股票代码" in full_data.columns:
+        company_all_data = full_data[(full_data["股票代码"] == stock_code.strip().zfill(6)) & filter_cond].copy()
+    elif company_name and "企业名称" in full_data.columns:
+        company_all_data = full_data[(full_data["企业名称"].str.contains(company_name.strip(), na=False)) & filter_cond].copy()
 
-    # 筛选当前年份数据（仅保留Excel原始列）
+    # 筛选当前年份数据（仅保留指定列）
     current_year_data = full_data[filter_cond].copy()
-    # 删除临时列，只显示Excel原始列
+    # 删除临时列，只显示指定列
     current_year_data_display = current_year_data.drop(columns=["_年份临时列"], errors='ignore')
     
-    # 展示当年数据（仅Excel原始列）
+    # 展示当年数据（仅指定列）
     st.success(f"✅ 已查询{selected_year}年数据（总计{len(current_year_data)}家企业）")
     st.subheader("📋 企业当年详细数据")
     current_filtered_data = current_year_data_display.copy()
     
-    # 应用筛选条件（仅处理Excel中存在的列）
+    # 应用筛选条件
     if stock_code and "股票代码" in current_filtered_data.columns:
         current_filtered_data = current_filtered_data[current_filtered_data["股票代码"] == stock_code.strip().zfill(6)]
     if company_name and "企业名称" in current_filtered_data.columns:
         current_filtered_data = current_filtered_data[current_filtered_data["企业名称"].str.contains(company_name.strip(), na=False)]
     
     if not current_filtered_data.empty:
-        # 只显示Excel原始列，无任何新增列
         st.dataframe(current_filtered_data, use_container_width=True)
         st.info(f"筛选结果：找到{len(current_filtered_data)}家匹配企业")
     else:
         st.info(f"ℹ️ {selected_year}年数据中无匹配企业，请调整查询条件")
 
-    # 全行业趋势图（仅用Excel中存在的列）
+    # 全行业趋势图
     if "数字化转型综合指数" in full_data.columns:
         st.subheader("📊 全行业转型指数趋势")
         industry_avg_data = []
@@ -200,25 +198,18 @@ def main():
         industry_avg_df = pd.DataFrame(industry_avg_data)
         st.line_chart(industry_avg_df.set_index("年份")["平均指数"], use_container_width=True, color="#2E86AB", height=400)
 
-    # 企业趋势图（仅查询年份标箭头）
+    # 企业趋势图
     if not company_all_data.empty and "数字化转型综合指数" in company_all_data.columns:
-        # 提取企业全年份数据
-        company_full_data = pd.DataFrame()
-        if stock_code and "股票代码" in full_data.columns:
-            company_full_data = full_data[full_data["股票代码"] == stock_code.strip().zfill(6)].copy()
-        elif company_name and "企业名称" in full_data.columns:
-            company_full_data = full_data[full_data["企业名称"].str.contains(company_name.strip(), na=False)].copy()
-        
         selected_company = "未知企业"
-        if "企业名称" in company_full_data.columns and not company_full_data.empty:
-            selected_company = company_full_data["企业名称"].unique()[0]
+        if "企业名称" in company_all_data.columns and not company_all_data.empty:
+            selected_company = company_all_data["企业名称"].unique()[0]
         
-        stock_code_display = stock_code if stock_code else (company_full_data["股票代码"].iloc[0] if ("股票代码" in company_full_data.columns and not company_full_data.empty) else "未知代码")
+        stock_code_display = stock_code if stock_code else (company_all_data["股票代码"].iloc[0] if ("股票代码" in company_all_data.columns and not company_all_data.empty) else "未知代码")
         
         # 准备趋势数据
         company_trend = []
         for year in all_years:
-            year_data = company_full_data[company_full_data["_年份临时列"] == year]
+            year_data = full_data[(full_data["_年份临时列"] == year) & ((full_data["股票代码"] == stock_code_display) if stock_code_display else True)]
             idx_val = year_data["数字化转型综合指数"].iloc[0] if not year_data.empty else 0
             company_trend.append({"年份": year, "数字化转型综合指数": idx_val})
         company_trend_df = pd.DataFrame(company_trend)
@@ -278,14 +269,14 @@ def main():
         )
         st.altair_chart(chart, use_container_width=True)
         
-        # 展示历年完整数据（仅Excel原始列）
+        # 展示历年完整数据（仅指定列）
         st.subheader(f"📋 {selected_company} 历年完整数据")
-        company_detail_display = company_full_data.drop(columns=["_年份临时列"], errors='ignore')
+        company_detail_display = full_data[full_data["股票代码"] == stock_code_display].drop(columns=["_年份临时列"], errors='ignore') if stock_code_display else company_all_data.drop(columns=["_年份临时列"], errors='ignore')
         st.dataframe(company_detail_display, use_container_width=True)
 
         # 下载功能
         st.subheader("📥 综合报告下载")
-        report_text, report_data = generate_company_report(selected_company, company_full_data, company_trend_df)
+        report_text, report_data = generate_company_report(selected_company, company_all_data, company_trend_df)
         col_r1, col_r2, col_r3 = st.columns(3)
         with col_r1:
             st.download_button(label="📄 下载报告（TXT）", data=report_text, file_name=f"{selected_company}_报告_{datetime.now().strftime('%Y%m%d')}.txt", mime="text/plain")

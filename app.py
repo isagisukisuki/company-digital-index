@@ -35,35 +35,32 @@ def to_excel(df):
     writer.close()
     return output.getvalue()
 
-# 核心：全局指数标准化（词频全零置0 + 0-100缩放 + 强制非负）
-def normalize_index_global(df):
-    index_col = "数字化转型综合指数"
-    if index_col not in df.columns:
-        return df
+# 核心：直接基于词频计算100分制指数（彻底重构指数计算逻辑）
+def calculate_percentile_index(df):
+    # 词频列
+    word_freq_cols = [
+        "人工智能词频数",
+        "大数据词频数",
+        "云计算词频数",
+        "区块链词频数",
+        "数字技术运用词频数"
+    ]
     
-    # 步骤1：词频全为0的企业，指数直接置0
-    word_freq_cols = [col for col in RETAIN_COLUMNS if col.endswith("词频数")]
-    df["词频全零"] = (df[word_freq_cols] == 0).all(axis=1)
-    df.loc[df["词频全零"], index_col] = 0
-    df = df.drop("词频全零", axis=1)
-
-    # 步骤2：提取所有非零指数的原始数据，做全局Min-Max标准化到0-100
-    raw_index = df[index_col].copy()
-    non_zero_raw = raw_index[raw_index > 0]
-    if len(non_zero_raw) == 0:
-        df[index_col] = 0.0
-        return df
+    # 步骤1：计算每家企业的总词频数
+    df["总词频数"] = df[word_freq_cols].sum(axis=1)
     
-    # 计算全局最大/最小值（基于所有年份的非零原始指数）
-    global_min = non_zero_raw.min()
-    global_max = non_zero_raw.max()
-
-    # 对所有数据做标准化（包含零值）
-    df[index_col] = (raw_index - global_min) / (global_max - global_min) * 100
-    # 强制将负数/零值设为0（避免标准化后出现负数）
-    df[index_col] = df[index_col].clip(lower=0)
-    # 保留2位小数
-    df[index_col] = df[index_col].round(2)
+    # 步骤2：计算全局最大总词频数（作为100分基准）
+    global_max_total = df["总词频数"].max()
+    
+    # 步骤3：计算百分制指数（总词频数/全局最大总词频数 * 100）
+    df["数字化转型综合指数"] = (df["总词频数"] / global_max_total * 100).round(2)
+    
+    # 强制确保：无负数、词频全零则指数为0、最大值为100
+    df["数字化转型综合指数"] = df["数字化转型综合指数"].clip(lower=0, upper=100)
+    df.loc[df["总词频数"] == 0, "数字化转型综合指数"] = 0.0
+    
+    # 删除临时列
+    df = df.drop("总词频数", axis=1)
     
     return df
 
@@ -107,10 +104,10 @@ def generate_company_report(company_name, company_data, full_trend_data):
 - 数据覆盖年份：{available_years if available_years else '无'}
 - 有效数据年份数：{total_years}
 
-## 二、核心转型指数分析
-- 历史最高指数：{index_analysis['max_index']}（{index_analysis['max_year']}年）
-- 历年平均指数：{index_analysis['avg_index']}
-- 最新年份（{index_analysis['latest_year']}）指数：{index_analysis['latest_index']}
+## 二、核心转型指数分析（百分制）
+- 历史最高指数：{index_analysis['max_index']}分（{index_analysis['max_year']}年）
+- 历年平均指数：{index_analysis['avg_index']}分
+- 最新年份（{index_analysis['latest_year']}）指数：{index_analysis['latest_index']}分
 - 整体趋势：{index_analysis['trend']}
 
 ## 三、技术词频分析（历年均值）
@@ -120,13 +117,13 @@ def generate_company_report(company_name, company_data, full_trend_data):
 {full_trend_data.round(2).to_string(index=False)}
 
 ## 五、数据说明
-1. 指数越高代表转型程度越高
-2. 词频全为0的企业，指数直接置为0
-3. 指数已通过全局标准化处理
+1. 数字化转型综合指数为百分制（0-100分），满分代表全行业最高词频水平
+2. 词频全为0的企业，指数直接为0分
+3. 指数=（企业总词频数/全行业最大总词频数）×100
 """
     return report, full_trend_data
 
-# 读取并全局标准化数据
+# 读取并重新计算百分制指数
 def load_full_data(file_path):
     try:
         if not os.path.exists(file_path):
@@ -153,8 +150,8 @@ def load_full_data(file_path):
         full_df = pd.concat(df_list, ignore_index=True)
         full_df = full_df.fillna(0)
         
-        # 全局执行指数标准化（核心步骤，覆盖所有数据）
-        full_df = normalize_index_global(full_df)
+        # 核心：重新计算百分制指数（覆盖原始指数）
+        full_df = calculate_percentile_index(full_df)
         
         return full_df.reset_index(drop=True)
     except Exception as e:
@@ -171,7 +168,7 @@ def get_all_years(full_data):
 def main():
     st.title("企业数字化转型指数查询系统")
     
-    # 读取并全局标准化数据（所有模块共用这一份数据）
+    # 读取并重新计算百分制指数（所有模块共用这一份数据）
     full_data = load_full_data(DIGITAL_TRANSFORMATION_FILE)
     if full_data.empty:
         return
@@ -191,7 +188,7 @@ def main():
     with col3:
         selected_year = st.selectbox("选择查询年份", all_years, index=0)
 
-    # 筛选企业数据（基于全局标准化后的数据）
+    # 筛选企业数据（基于百分制指数数据）
     company_all_data = pd.DataFrame()
     filter_cond = full_data["年份"] == selected_year
     if stock_code and "股票代码" in full_data.columns:
@@ -215,7 +212,7 @@ def main():
     else:
         st.info(f"ℹ️ {selected_year}年数据中无匹配企业，请调整查询条件")
 
-    # 全行业趋势图（全局标准化数据）
+    # 全行业趋势图（百分制指数）
     if "数字化转型综合指数" in full_data.columns:
         st.subheader("📊 全行业转型指数趋势")
         industry_avg_data = []
@@ -231,12 +228,12 @@ def main():
             height=400
         )
 
-    # 企业趋势图（全局标准化数据）
+    # 企业趋势图（百分制指数）
     if not company_all_data.empty and "数字化转型综合指数" in company_all_data.columns:
         selected_company = company_all_data["企业名称"].unique()[0] if ("企业名称" in company_all_data.columns and not company_all_data.empty) else "未知企业"
         stock_code_display = stock_code if stock_code else (company_all_data["股票代码"].iloc[0] if ("股票代码" in company_all_data.columns and not company_all_data.empty) else "未知代码")
         
-        # 准备企业趋势数据（全局标准化后的数据）
+        # 准备企业趋势数据（百分制）
         company_trend = []
         for year in all_years:
             year_data = full_data[(full_data["年份"] == year) & (full_data["股票代码"] == stock_code_display)]
@@ -244,11 +241,8 @@ def main():
             company_trend.append({"年份": year, "数字化转型综合指数": idx_val})
         company_trend_df = pd.DataFrame(company_trend)
 
-        # 绘制企业趋势图
+        # 绘制企业趋势图（Y轴固定0-100）
         st.subheader(f"📈 {selected_company}（{stock_code_display}）转型指数趋势")
-        y_max = company_trend_df["数字化转型综合指数"].max()
-        arrow_y = min(y_max * 1.2, 100) if y_max > 0 else 20
-
         base = alt.Chart(company_trend_df).encode(
             x=alt.X("年份:O", axis=alt.Axis(labelAngle=-45)),
             y=alt.Y("数字化转型综合指数:Q", title="数字化转型综合指数", scale=alt.Scale(domain=[0, 100]))
@@ -256,8 +250,9 @@ def main():
         normal_line = base.mark_line(color="#FF6B6B", strokeWidth=2)
         normal_points = base.mark_point(size=60, color="#FF6B6B")
 
+        # 选中年份标注
         selected_trend_data = company_trend_df[company_trend_df["年份"] == selected_year].copy()
-        selected_trend_data["箭头Y"] = arrow_y
+        selected_trend_data["箭头Y"] = min(selected_trend_data["数字化转型综合指数"].iloc[0] + 5, 95)
         highlight_arrow = alt.Chart(selected_trend_data).mark_point(
             size=300, shape="triangle-down", color="#FF0000", stroke="black", strokeWidth=2
         ).encode(x="年份:O", y="箭头Y:Q")
@@ -273,7 +268,7 @@ def main():
         )
         st.altair_chart(chart, use_container_width=True)
         
-        # 展示历年完整数据（全局标准化后的数据）
+        # 展示历年完整数据（百分制）
         st.subheader(f"📋 {selected_company} 历年完整数据")
         company_detail_display = full_data[full_data["股票代码"] == stock_code_display].copy()
         st.dataframe(company_detail_display, use_container_width=True)

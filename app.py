@@ -334,4 +334,5 @@ def main():
         st.warning("⚠️ 未找到匹配的企业数据，请检查股票代码或企业名称是否正确")
 
 if __name__ == "__main__":
-    main()v
+    main()
+

@@ -14,10 +14,11 @@ pd.set_option('display.unicode.east_asian_width', True)
 DIGITAL_TRANSFORMATION_FILE = "数字化转型指数分析结果.xlsx"
 # =====================================================================
 
-# 【关键】你需要保留的列名（手动填写Excel中实际需要的列，其他列会被删除）
+# 【关键】保留的列名（股票代码在前，包含年份）
 RETAIN_COLUMNS = [
-    "企业名称",
     "股票代码",
+    "企业名称",
+    "年份",
     "数字化转型综合指数",
     "人工智能词频数",
     "大数据词频数",
@@ -37,8 +38,7 @@ def to_excel(df):
 # 生成企业综合报告
 def generate_company_report(company_name, company_data, full_trend_data):
     stock_code = company_data["股票代码"].iloc[0] if ("股票代码" in company_data.columns and not company_data.empty) else "未知"
-    temp_years = company_data["_年份临时列"].unique() if "_年份临时列" in company_data.columns else []
-    available_years = sorted(temp_years)
+    available_years = sorted(company_data["年份"].unique()) if ("年份" in company_data.columns and not company_data.empty) else []
     total_years = len(available_years)
     
     index_analysis = {"max_index":0, "max_year":"无", "avg_index":0, "latest_index":0, "trend":"无数据"}
@@ -46,14 +46,14 @@ def generate_company_report(company_name, company_data, full_trend_data):
         max_val = company_data["数字化转型综合指数"].max()
         max_year_df = company_data[company_data["数字化转型综合指数"] == max_val]
         index_analysis["max_index"] = round(max_val, 2)
-        index_analysis["max_year"] = max_year_df["_年份临时列"].iloc[0] if ("_年份临时列" in max_year_df.columns and not max_year_df.empty) else "无"
+        index_analysis["max_year"] = max_year_df["年份"].iloc[0] if not max_year_df.empty else "无"
         index_analysis["avg_index"] = round(company_data["数字化转型综合指数"].mean(), 2)
         index_analysis["latest_year"] = max(available_years) if available_years else "无"
-        latest_df = company_data[company_data["_年份临时列"] == index_analysis["latest_year"]]
+        latest_df = company_data[company_data["年份"] == index_analysis["latest_year"]]
         index_analysis["latest_index"] = round(latest_df["数字化转型综合指数"].iloc[0], 2) if not latest_df.empty else 0
         
         if len(available_years) >= 2:
-            first_df = company_data[company_data["_年份临时列"] == min(available_years)]
+            first_df = company_data[company_data["年份"] == min(available_years)]
             first_index = first_df["数字化转型综合指数"].iloc[0] if not first_df.empty else 0
             if first_index != 0:
                 growth_rate = round(((index_analysis["latest_index"] - first_index)/first_index)*100, 2)
@@ -93,7 +93,7 @@ def generate_company_report(company_name, company_data, full_trend_data):
 """
     return report, full_trend_data
 
-# 读取完整数据（仅保留指定列）
+# 读取完整数据（保留指定列+年份列）
 def load_full_data(file_path):
     try:
         if not os.path.exists(file_path):
@@ -108,12 +108,12 @@ def load_full_data(file_path):
         
         df_list = []
         for sheet in sheet_names:
-            # 读取Excel并仅保留指定列
+            # 读取Excel并保留指定列
             sheet_df = pd.read_excel(file_path, sheet_name=sheet, engine='openpyxl')
-            # 只保留RETAIN_COLUMNS中的列（过滤无关列）
+            # 工作表名作为年份列（保留）
+            sheet_df["年份"] = sheet
+            # 只保留RETAIN_COLUMNS中的列
             sheet_df = sheet_df[[col for col in RETAIN_COLUMNS if col in sheet_df.columns]]
-            # 年份列临时存储
-            sheet_df["_年份临时列"] = sheet
             # 修正股票代码格式
             if "股票代码" in sheet_df.columns:
                 sheet_df["股票代码"] = sheet_df["股票代码"].astype(str).str.zfill(6)
@@ -128,10 +128,10 @@ def load_full_data(file_path):
 
 # 获取所有年份
 def get_all_years(full_data):
-    if "_年份临时列" not in full_data.columns:
+    if "年份" not in full_data.columns:
         st.error("❌ 数据中无有效年份")
         return []
-    return sorted(full_data["_年份临时列"].unique())
+    return sorted(full_data["年份"].unique())
 
 def main():
     st.title("企业数字化转型指数查询系统")
@@ -159,21 +159,19 @@ def main():
 
     # 筛选企业数据
     company_all_data = pd.DataFrame()
-    filter_cond = full_data["_年份临时列"] == selected_year
+    filter_cond = full_data["年份"] == selected_year
     if stock_code and "股票代码" in full_data.columns:
         company_all_data = full_data[(full_data["股票代码"] == stock_code.strip().zfill(6)) & filter_cond].copy()
     elif company_name and "企业名称" in full_data.columns:
         company_all_data = full_data[(full_data["企业名称"].str.contains(company_name.strip(), na=False)) & filter_cond].copy()
 
-    # 筛选当前年份数据（仅保留指定列）
+    # 筛选当前年份数据（保留指定列）
     current_year_data = full_data[filter_cond].copy()
-    # 删除临时列，只显示指定列
-    current_year_data_display = current_year_data.drop(columns=["_年份临时列"], errors='ignore')
     
-    # 展示当年数据（仅指定列）
+    # 展示当年数据（股票代码在前，包含年份）
     st.success(f"✅ 已查询{selected_year}年数据（总计{len(current_year_data)}家企业）")
     st.subheader("📋 企业当年详细数据")
-    current_filtered_data = current_year_data_display.copy()
+    current_filtered_data = current_year_data.copy()
     
     # 应用筛选条件
     if stock_code and "股票代码" in current_filtered_data.columns:
@@ -192,7 +190,7 @@ def main():
         st.subheader("📊 全行业转型指数趋势")
         industry_avg_data = []
         for year in all_years:
-            year_data = full_data[full_data["_年份临时列"] == year]
+            year_data = full_data[full_data["年份"] == year]
             avg_idx = year_data["数字化转型综合指数"].mean() if not year_data.empty else 0
             industry_avg_data.append({"年份": year, "平均指数": round(avg_idx, 4)})
         industry_avg_df = pd.DataFrame(industry_avg_data)
@@ -209,7 +207,7 @@ def main():
         # 准备趋势数据
         company_trend = []
         for year in all_years:
-            year_data = full_data[(full_data["_年份临时列"] == year) & ((full_data["股票代码"] == stock_code_display) if stock_code_display else True)]
+            year_data = full_data[(full_data["年份"] == year) & ((full_data["股票代码"] == stock_code_display) if stock_code_display else True)]
             idx_val = year_data["数字化转型综合指数"].iloc[0] if not year_data.empty else 0
             company_trend.append({"年份": year, "数字化转型综合指数": idx_val})
         company_trend_df = pd.DataFrame(company_trend)
@@ -269,9 +267,9 @@ def main():
         )
         st.altair_chart(chart, use_container_width=True)
         
-        # 展示历年完整数据（仅指定列）
+        # 展示历年完整数据（股票代码在前+包含年份）
         st.subheader(f"📋 {selected_company} 历年完整数据")
-        company_detail_display = full_data[full_data["股票代码"] == stock_code_display].drop(columns=["_年份临时列"], errors='ignore') if stock_code_display else company_all_data.drop(columns=["_年份临时列"], errors='ignore')
+        company_detail_display = full_data[full_data["股票代码"] == stock_code_display].copy() if stock_code_display else company_all_data.copy()
         st.dataframe(company_detail_display, use_container_width=True)
 
         # 下载功能

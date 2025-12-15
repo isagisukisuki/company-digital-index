@@ -4,7 +4,7 @@ import numpy as np
 from io import BytesIO
 from datetime import datetime
 import os
-import plotly.graph_objects as go
+import altair as alt
 
 # 全局设置：解决中文显示/对齐问题
 pd.set_option('display.unicode.ambiguous_as_wide', True)
@@ -96,7 +96,7 @@ def load_full_data(file_path):
             sheet_name="Sheet1",  # 请改为实际工作表名称（如“2023”）
             engine="openpyxl"
         )
-        # 清洗数据（强制将年份转为字符串，避免类型不匹配）
+        # 清洗数据（强制将年份转为字符串）
         if "年份" in df.columns:
             df["年份"] = df["年份"].astype(str).str.strip()
         if "企业名称" in df.columns:
@@ -185,12 +185,12 @@ def main():
     industry_avg_df = pd.DataFrame(industry_avg_data)
     st.line_chart(industry_avg_df.set_index("年份")["平均指数"], use_container_width=True, color="#2E86AB", height=400)
 
-    # 企业全量趋势图：输入股票代码/名称后自动展示（修复标注部分）
+    # 企业全量趋势图：输入股票代码/名称后自动展示（用altair实现标注）
     if not company_all_data.empty:
         # 获取企业名称
         selected_company = company_all_data["企业名称"].iloc[0] if not company_all_data["企业名称"].empty else "未知企业"
         
-        # 补全所有年份的趋势数据（确保年份为字符串，与selected_year类型一致）
+        # 补全所有年份的趋势数据
         full_years_df = pd.DataFrame({"年份": all_years}).astype(str)
         company_trend = pd.merge(
             full_years_df,
@@ -201,65 +201,65 @@ def main():
         # 将指数转回数值类型
         company_trend["数字化转型综合指数"] = pd.to_numeric(company_trend["数字化转型综合指数"], errors="coerce").fillna(0)
 
-        # 展示趋势图（强制显示选中年份的标注）
+        # 展示趋势图（带选中年份标注）
         st.subheader(f"📈 {selected_company}（{stock_code if stock_code else '未知代码'}）转型指数趋势")
         
-        # 创建Plotly图表
-        fig = go.Figure()
-        
-        # 绘制基础折线
-        fig.add_trace(go.Scatter(
-            x=company_trend["年份"],
-            y=company_trend["数字化转型综合指数"],
-            mode="lines+markers",
-            name="转型指数",
-            line=dict(color="#FF6B6B", width=2),
-            marker=dict(size=8, color="#FF6B6B")
-        ))
-        
-        # 强制匹配选中年份（无论是否有数据）
-        selected_year_str = str(selected_year)
-        # 获取选中年份的指数值
-        selected_idx = company_trend[company_trend["年份"] == selected_year_str]["数字化转型综合指数"].iloc[0] if not company_trend[company_trend["年份"] == selected_year_str].empty else 0
-        
-        # 添加选中年份的特殊标记
-        fig.add_trace(go.Scatter(
-            x=[selected_year_str],
-            y=[selected_idx],
-            mode="markers+text",
-            name=f"{selected_year_str}年数据",
-            marker=dict(
-                size=18,
-                color="#FF0000",  # 红色突出
-                symbol="star",
-                line=dict(width=2, color="#000000")  # 黑色边框
-            ),
-            text=[f"{selected_year_str}年：{selected_idx:.2f}"],
-            textposition="top center",
-            textfont=dict(size=14, color="#FF0000", weight="bold")
-        ))
-        
-        # 添加垂直参考线
-        fig.add_vline(
-            x=selected_year_str,
-            line=dict(color="#0000FF", dash="dash", width=2),
-            annotation_text=f"查询年份：{selected_year_str}",
-            annotation_position="top right",
-            annotation_font=dict(size=12, color="#0000FF")
+        # 准备标注数据
+        selected_year_data = company_trend[company_trend["年份"] == str(selected_year)].copy()
+        selected_year_data["标注"] = f"{selected_year}年：{selected_year_data['数字化转型综合指数'].iloc[0]:.2f}"
+
+        # 创建基础折线图
+        base = alt.Chart(company_trend).encode(
+            x=alt.X("年份:O", axis=alt.Axis(labelAngle=-45)),
+            y=alt.Y("数字化转型综合指数:Q", title="数字化转型综合指数")
         )
-        
-        # 图表样式设置
-        fig.update_layout(
-            xaxis_title="年份",
-            yaxis_title="数字化转型综合指数",
+
+        # 折线+普通点
+        line = base.mark_line(color="#FF6B6B", strokeWidth=2).mark_point(size=80, color="#FF6B6B")
+
+        # 选中年份的特殊标记（红色五角星+文字）
+        highlight = alt.Chart(selected_year_data).mark_point(
+            size=200,
+            shape="star",
+            color="#FF0000",
+            stroke="black",
+            strokeWidth=2
+        ).encode(
+            x="年份:O",
+            y="数字化转型综合指数:Q"
+        )
+
+        # 标注文字
+        text = alt.Chart(selected_year_data).mark_text(
+            align="center",
+            baseline="bottom",
+            fontSize=12,
+            fontWeight="bold",
+            color="#FF0000",
+            dy=-10
+        ).encode(
+            x="年份:O",
+            y="数字化转型综合指数:Q",
+            text="标注:N"
+        )
+
+        # 垂直参考线
+        rule = alt.Chart(selected_year_data).mark_rule(
+            color="#0000FF",
+            strokeDash=[5,5],
+            strokeWidth=2
+        ).encode(
+            x="年份:O"
+        )
+
+        # 组合图表
+        chart = (line + highlight + text + rule).properties(
             height=500,
-            xaxis_tickangle=-45,  # 年份标签旋转，避免重叠
-            showlegend=True,
-            plot_bgcolor="white"
+            width="container"
         )
-        
-        # 在Streamlit中显示图表
-        st.plotly_chart(fig, use_container_width=True)
+
+        # 在Streamlit中显示
+        st.altair_chart(chart, use_container_width=True)
 
         # 展示历年完整数据
         st.subheader(f"📋 {selected_company} 历年完整数据")

@@ -85,7 +85,7 @@ def generate_company_report(company_name, company_data, full_trend_data):
 """
     return report, full_trend_data
 
-# 读取完整数据（清洗None/异常值+修正股票代码格式）
+# 读取完整数据（仅保留Excel原始列名+清洗无关列）
 def load_full_data(file_path):
     try:
         if not os.path.exists(file_path):
@@ -100,17 +100,19 @@ def load_full_data(file_path):
         
         df_list = []
         for sheet in sheet_names:
+            # 读取Excel原始列名，不新增无关列
             sheet_df = pd.read_excel(file_path, sheet_name=sheet, engine='openpyxl')
+            # 仅添加“年份”列（工作表名），不添加其他列
             sheet_df["年份"] = sheet
-            # 1. 清洗全0数据：保留非全0行
-            sheet_df = sheet_df.replace(0, np.nan).dropna(how='all').fillna(0)
-            # 2. 修正股票代码格式（补全6位）
+            # 修正股票代码格式（补全6位）
             if "股票代码" in sheet_df.columns:
                 sheet_df["股票代码"] = sheet_df["股票代码"].astype(str).str.zfill(6)
+            # 仅保留Excel原始列+年份列
             df_list.append(sheet_df)
         
         full_df = pd.concat(df_list, ignore_index=True)
         
+        # 清洗空值
         if "企业名称" in full_df.columns:
             full_df["企业名称"] = full_df["企业名称"].str.strip()
         full_df = full_df.fillna(0)
@@ -153,7 +155,6 @@ def main():
     # 筛选企业数据
     company_all_data = pd.DataFrame()
     if stock_code:
-        # 股票代码匹配6位格式
         company_all_data = full_data[full_data["股票代码"] == stock_code.strip().zfill(6)].copy()
     elif company_name:
         company_all_data = full_data[full_data["企业名称"].str.contains(company_name.strip(), na=False)].copy()
@@ -161,7 +162,7 @@ def main():
     # 筛选当前年份数据
     current_year_data = full_data[full_data["年份"] == selected_year].copy()
     
-    # 展示当年数据
+    # 展示当年数据（仅显示Excel原始列名）
     st.success(f"✅ 已查询{selected_year}年数据（总计{len(current_year_data)}家企业）")
     st.subheader("📋 企业当年详细数据")
     current_filtered_data = current_year_data.copy()
@@ -170,6 +171,7 @@ def main():
     if company_name:
         current_filtered_data = current_filtered_data[current_filtered_data["企业名称"].str.contains(company_name.strip(), na=False)]
     if not current_filtered_data.empty:
+        # 仅显示Excel原始列名
         st.dataframe(current_filtered_data, use_container_width=True)
         st.info(f"筛选结果：找到{len(current_filtered_data)}家匹配企业")
     else:
@@ -190,7 +192,7 @@ def main():
         selected_company = company_all_data["企业名称"].unique()[0] if len(company_all_data["企业名称"].unique()) > 0 else "未知企业"
         stock_code_display = stock_code if stock_code else company_all_data["股票代码"].iloc[0] if "股票代码" in company_all_data.columns else "未知代码"
         
-        # 补全趋势数据
+        # 补全趋势数据（仅用Excel原始列）
         full_years_df = pd.DataFrame({"年份": all_years})
         company_trend = pd.merge(
             full_years_df,
@@ -256,12 +258,10 @@ def main():
         )
         st.altair_chart(chart, use_container_width=True)
         
-        # 展示历年完整数据
+        # 展示历年完整数据（仅显示Excel原始列名）
         st.subheader(f"📋 {selected_company} 历年完整数据")
-        display_columns = ["年份", "股票代码", "数字化转型综合指数", "人工智能词频数", "大数据词频数", "云计算词频数", "区块链词频数", "数字技术运用词频数"]
-        display_columns = [col for col in display_columns if col in company_all_data.columns]
-        company_detail = company_all_data[display_columns].sort_values("年份").reset_index(drop=True)
-        st.dataframe(company_detail, use_container_width=True)
+        # 仅显示Excel原始列名
+        st.dataframe(company_all_data, use_container_width=True)
 
         # 下载功能
         st.subheader("📥 综合报告下载")
@@ -272,7 +272,7 @@ def main():
         with col_r2:
             st.download_button(label="📊 下载趋势数据（Excel）", data=to_excel(report_data), file_name=f"{selected_company}_趋势数据.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         with col_r3:
-            st.download_button(label="📋 下载历年数据（Excel）", data=to_excel(company_detail), file_name=f"{selected_company}_历年数据.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            st.download_button(label="📋 下载历年数据（Excel）", data=to_excel(company_all_data), file_name=f"{selected_company}_历年数据.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     elif stock_code or company_name:
         st.warning("⚠️ 未找到匹配的企业数据，请检查股票代码或企业名称是否正确")
 

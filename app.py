@@ -85,7 +85,7 @@ def generate_company_report(company_name, company_data, full_trend_data):
 """
     return report, full_trend_data
 
-# 读取完整数据（适配GitHub仓库+数字工作表+清洗None值）
+# 读取完整数据（清洗None/异常值+修正股票代码格式）
 def load_full_data(file_path):
     try:
         if not os.path.exists(file_path):
@@ -102,15 +102,17 @@ def load_full_data(file_path):
         for sheet in sheet_names:
             sheet_df = pd.read_excel(file_path, sheet_name=sheet, engine='openpyxl')
             sheet_df["年份"] = sheet
-            sheet_df = sheet_df.fillna(0)
+            # 1. 清洗全0数据：保留非全0行
+            sheet_df = sheet_df.replace(0, np.nan).dropna(how='all').fillna(0)
+            # 2. 修正股票代码格式（补全6位）
+            if "股票代码" in sheet_df.columns:
+                sheet_df["股票代码"] = sheet_df["股票代码"].astype(str).str.zfill(6)
             df_list.append(sheet_df)
         
         full_df = pd.concat(df_list, ignore_index=True)
         
         if "企业名称" in full_df.columns:
             full_df["企业名称"] = full_df["企业名称"].str.strip()
-        if "股票代码" in full_df.columns:
-            full_df["股票代码"] = full_df["股票代码"].astype(str).str.strip()
         full_df = full_df.fillna(0)
         return full_df.dropna(how="all").reset_index(drop=True)
     except Exception as e:
@@ -151,7 +153,8 @@ def main():
     # 筛选企业数据
     company_all_data = pd.DataFrame()
     if stock_code:
-        company_all_data = full_data[full_data["股票代码"] == stock_code.strip()].copy()
+        # 股票代码匹配6位格式
+        company_all_data = full_data[full_data["股票代码"] == stock_code.strip().zfill(6)].copy()
     elif company_name:
         company_all_data = full_data[full_data["企业名称"].str.contains(company_name.strip(), na=False)].copy()
 
@@ -163,7 +166,7 @@ def main():
     st.subheader("📋 企业当年详细数据")
     current_filtered_data = current_year_data.copy()
     if stock_code:
-        current_filtered_data = current_filtered_data[current_filtered_data["股票代码"] == stock_code.strip()]
+        current_filtered_data = current_filtered_data[current_filtered_data["股票代码"] == stock_code.strip().zfill(6)]
     if company_name:
         current_filtered_data = current_filtered_data[current_filtered_data["企业名称"].str.contains(company_name.strip(), na=False)]
     if not current_filtered_data.empty:
@@ -182,7 +185,7 @@ def main():
     industry_avg_df = pd.DataFrame(industry_avg_data)
     st.line_chart(industry_avg_df.set_index("年份")["平均指数"], use_container_width=True, color="#2E86AB", height=400)
 
-    # 企业趋势图（仅查询年份显示红色箭头+醒目数值）
+    # 企业趋势图（箭头移到数据上方空白处）
     if not company_all_data.empty:
         selected_company = company_all_data["企业名称"].unique()[0] if len(company_all_data["企业名称"].unique()) > 0 else "未知企业"
         stock_code_display = stock_code if stock_code else company_all_data["股票代码"].iloc[0] if "股票代码" in company_all_data.columns else "未知代码"
@@ -196,45 +199,58 @@ def main():
             how="left"
         ).fillna(0)
 
-        # 用Altair实现：仅查询年份显示红色箭头
+        # 计算Y轴最大值，将箭头放在上方空白处
+        y_max = company_trend["数字化转型综合指数"].max()
+        arrow_y = y_max * 1.2 if y_max > 0 else 2  # 箭头Y坐标（数据上方20%）
+
         st.subheader(f"📈 {selected_company}（{stock_code_display}）转型指数趋势")
         
         # 1. 正常年份：粉色折线+粉色小圆点
         base = alt.Chart(company_trend).encode(
             x=alt.X("年份:O", axis=alt.Axis(labelAngle=-45)),
-            y=alt.Y("数字化转型综合指数:Q", title="数字化转型综合指数")
+            y=alt.Y("数字化转型综合指数:Q", title="数字化转型综合指数", scale=alt.Scale(domain=[min(company_trend["数字化转型综合指数"].min(), -1), arrow_y * 1.1]))  # 扩大Y轴范围
         )
         normal_line = base.mark_line(color="#FF6B6B", strokeWidth=2)
         normal_points = base.mark_point(size=60, color="#FF6B6B")
 
-        # 2. 查询年份：红色箭头+加粗数值（醒目显示）
-        selected_data = company_trend[company_trend["年份"] == selected_year]
-        # 红色箭头（形状用"triangle-right"模拟）
+        # 2. 查询年份：红色箭头（放在数据点正上方空白处）+醒目数值
+        selected_data = company_trend[company_trend["年份"] == selected_year].copy()
+        selected_data["箭头Y"] = arrow_y  # 箭头Y坐标（数据上方）
+        
+        # 红色箭头
         highlight_arrow = alt.Chart(selected_data).mark_point(
             size=300,
-            shape="triangle-right",  # 箭头形状
+            shape="triangle-down",  # 向下箭头（指向数据点）
             color="#FF0000",
             stroke="black",
-            strokeWidth=2,
-            angle=0  # 箭头朝向
+            strokeWidth=2
         ).encode(
             x="年份:O",
-            y="数字化转型综合指数:Q"
+            y="箭头Y:Q"
         )
         # 箭头旁的醒目数值（大号粗体）
         highlight_text = highlight_arrow.mark_text(
-            align="left",
-            baseline="middle",
-            dx=15,  # 文字在箭头右侧
+            align="center",
+            baseline="bottom",
+            dy=-10,  # 文字在箭头上方
             color="#FF0000",
             fontWeight="bold",
             fontSize=14
         ).encode(
             text=alt.Text("数字化转型综合指数:Q", format=".2f")
         )
+        # 箭头到数据点的连接线
+        line_to_point = alt.Chart(selected_data).mark_line(
+            color="#FF0000",
+            strokeDash=[3,3]
+        ).encode(
+            x="年份:O",
+            y=alt.Y("数字化转型综合指数:Q"),
+            y2="箭头Y:Q"
+        )
 
-        # 组合：正常折线+正常点+查询年红色箭头+查询年数值
-        chart = (normal_line + normal_points + highlight_arrow + highlight_text).properties(
+        # 组合：正常折线+正常点+箭头+数值+连接线
+        chart = (normal_line + normal_points + line_to_point + highlight_arrow + highlight_text).properties(
             height=500,
             width="container"
         )

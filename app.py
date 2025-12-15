@@ -207,27 +207,9 @@ def main():
             how="left"
         ).fillna(0)
 
-        # 展示趋势图（添加选中年份标注）
+        # 展示趋势图
         st.subheader(f"📈 {selected_company}（{stock_code if stock_code else '未知代码'}）转型指数趋势")
-        
-        # ======== 仅新增这部分标注代码 ========
-        # 创建带标注的DataFrame
-        company_trend_with_anno = company_trend.copy()
-        # 标记选中年份
-        company_trend_with_anno['查询年份'] = company_trend_with_anno['年份'] == selected_year
-        # 获取选中年份的指数值
-        selected_value = company_trend_with_anno[company_trend_with_anno['查询年份']]['数字化转型综合指数'].iloc[0] if len(company_trend_with_anno[company_trend_with_anno['查询年份']]) > 0 else 0
-        
-        # 先显示原生折线图（保持原有样式）
-        st.line_chart(company_trend.set_index("年份")["数字化转型综合指数"], use_container_width=True, color="#FF6B6B", height=500)
-        
-        # 添加选中年份的文字标注（在图表下方显示）
-        st.markdown(f"""
-        <div style='background-color:#f8f9fa; padding:10px; border-left:5px solid #FF6B6B; margin:10px 0;'>
-        <strong>📌 查询年份标注：</strong> {selected_year}年 数字化转型综合指数 = <span style='color:red; font-size:16px; font-weight:bold;'>{selected_value:.2f}</span>
-        </div>
-        """, unsafe_allow_html=True)
-        # ======== 标注代码结束 ========
+        st.line_chart(company_trend.set_index("年份")["数字化转型综合指数"], use_container_width=True, color="#FF6B6B", height=500)  # 字段名同步修改
         
         # 展示历年完整数据
         st.subheader(f"📋 {selected_company} 历年完整数据")

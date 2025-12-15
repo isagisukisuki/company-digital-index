@@ -9,8 +9,7 @@ import os
 pd.set_option('display.unicode.ambiguous_as_wide', True)
 pd.set_option('display.unicode.east_asian_width', True)
 
-# ====================== 路径配置（仅用GitHub仓库相对路径）======================
-# GitHub仓库中，文件直接放在根目录，用相对路径
+# ====================== 路径配置（GitHub仓库相对路径）======================
 DIGITAL_TRANSFORMATION_FILE = "数字化转型指数分析结果.xlsx"
 # =====================================================================
 
@@ -88,28 +87,24 @@ def generate_company_report(company_name, company_data, full_trend_data):
 # 读取完整数据（适配GitHub仓库+数字工作表）
 def load_full_data(file_path):
     try:
-        # 1. 检查文件是否存在（GitHub仓库根目录）
         if not os.path.exists(file_path):
             st.error(f"❌ GitHub仓库中未找到文件：{file_path}（请确认文件在仓库根目录）")
             return pd.DataFrame()
         
-        # 2. 获取Excel中所有纯数字工作表
         excel_file = pd.ExcelFile(file_path, engine='openpyxl')
         sheet_names = [name for name in excel_file.sheet_names if name.isdigit()]
         if not sheet_names:
             st.error("❌ Excel中无纯数字名称的工作表（如1999）")
             return pd.DataFrame()
         
-        # 3. 合并所有数字工作表
         df_list = []
         for sheet in sheet_names:
             sheet_df = pd.read_excel(file_path, sheet_name=sheet, engine='openpyxl')
-            sheet_df["年份"] = sheet  # 工作表名作为年份
+            sheet_df["年份"] = sheet
             df_list.append(sheet_df)
         
         full_df = pd.concat(df_list, ignore_index=True)
         
-        # 4. 数据清洗
         if "企业名称" in full_df.columns:
             full_df["企业名称"] = full_df["企业名称"].str.strip()
         if "股票代码" in full_df.columns:
@@ -129,7 +124,7 @@ def get_all_years(full_data):
 def main():
     st.title("企业数字化转型指数查询系统")
     
-    # 读取数据（GitHub仓库相对路径）
+    # 读取数据
     full_data = load_full_data(DIGITAL_TRANSFORMATION_FILE)
     if full_data.empty:
         return
@@ -184,7 +179,7 @@ def main():
     industry_avg_df = pd.DataFrame(industry_avg_data)
     st.line_chart(industry_avg_df.set_index("年份")["平均指数"], use_container_width=True, color="#2E86AB", height=400)
 
-    # 企业趋势图（带查询年份标识）
+    # 企业趋势图（修复颜色错误+保留标识）
     if not company_all_data.empty:
         selected_company = company_all_data["企业名称"].unique()[0] if len(company_all_data["企业名称"].unique()) > 0 else "未知企业"
         
@@ -197,20 +192,19 @@ def main():
             how="left"
         ).fillna(0)
 
-        # 展示趋势图+标识
+        # 展示趋势图（用原生折线图+文字标注，避免颜色参数错误）
         st.subheader(f"📈 {selected_company}（{stock_code if stock_code else '未知代码'}）转型指数趋势")
-        # 区分查询年和普通年
-        company_trend["类型"] = company_trend["年份"].apply(lambda x: "查询年" if x == selected_year else "普通年")
-        # 绘制带颜色区分的折线图
-        st.line_chart(
-            data=company_trend.pivot(index="年份", columns="类型", values="数字化转型综合指数"),
-            use_container_width=True,
-            color={"普通年": "#FF6B6B", "查询年": "#FF0000"},
-            height=500
-        )
-        # 显示查询年数值
+        # 先画基础折线图
+        st.line_chart(company_trend.set_index("年份")["数字化转型综合指数"], use_container_width=True, color="#FF6B6B", height=500)
+        
+        # 查询年份标识（用文字+高亮框）
         selected_val = company_trend[company_trend["年份"] == selected_year]["数字化转型综合指数"].iloc[0]
-        st.markdown(f"<div style='color:red; font-weight:bold;'>👉 {selected_year}年 指数：{selected_val:.2f}</div>", unsafe_allow_html=True)
+        st.markdown(f"""
+        <div style='background:#ffebee; border:2px solid #f44336; padding:10px; margin-top:10px; border-radius:5px;'>
+            <strong>📌 {selected_year}年 数字化转型综合指数：</strong>
+            <span style='color:#f44336; font-size:16px;'>{selected_val:.2f}</span>
+        </div>
+        """, unsafe_allow_html=True)
         
         # 历年数据
         st.subheader(f"📋 {selected_company} 历年完整数据")

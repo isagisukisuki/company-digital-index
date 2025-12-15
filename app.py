@@ -3,11 +3,19 @@ import pandas as pd
 import numpy as np
 from io import BytesIO
 from datetime import datetime
-import altair as alt
+import os
 
 # 全局设置：解决中文显示/对齐问题
 pd.set_option('display.unicode.ambiguous_as_wide', True)
 pd.set_option('display.unicode.east_asian_width', True)
+
+# ====================== 路径配置（已按你的需求修改）======================
+DIGITAL_TRANSFORMATION_FILE = r"C:\Users\43474\Desktop\大数据\数字化转型指数分析结果.xlsx"  # 你的数据文件路径
+# （注：原代码中WORD_FREQ_FILE等未实际使用，若不需要可保留或删除）
+WORD_FREQ_FILE = r"C:\Users\43474\Desktop\大数据\数字化转型指数分析结果.xlsx"  # 若需要可同步修改
+PY_FILE_PATH = r"C:\Users\43474\Desktop\大数据\app.py"  # 若你的app.py在这个路径，同步修改
+ROOT_FOLDER = r"C:\Users\43474\Desktop\大数据"  # 数据所在文件夹
+# =====================================================================
 
 # 工具函数：生成Excel下载文件
 def to_excel(df):
@@ -24,7 +32,7 @@ def generate_company_report(company_name, company_data, full_trend_data):
     total_years = len(available_years)
     
     index_analysis = {"max_index":0, "max_year":"无", "avg_index":0, "latest_index":0, "trend":"无数据"}
-    if "数字化转型综合指数" in company_data.columns and not company_data.empty:
+    if "数字化转型综合指数" in company_data.columns and not company_data.empty:  # 字段名改为你的“数字化转型综合指数”
         max_val = company_data["数字化转型综合指数"].max()
         max_year_df = company_data[company_data["数字化转型综合指数"] == max_val]
         index_analysis["max_index"] = round(max_val, 2)
@@ -80,17 +88,18 @@ def generate_company_report(company_name, company_data, full_trend_data):
 """
     return report, full_trend_data
 
-# 读取上传的Excel数据
-def load_uploaded_data(uploaded_file):
+# 读取完整数据（匹配你的工作表名称）
+def load_full_data(file_path):
     try:
         df = pd.read_excel(
-            uploaded_file,
-            sheet_name="Sheet1",  # 请改为你Excel的实际工作表名
+            file_path,
+            sheet_name="Sheet1",  # 若你的工作表不是Sheet1，需改为实际名称（比如图中显示的“2023”）
             engine="openpyxl"
         )
-        # 清洗数据
+        # 清洗数据（兼容文本/数字格式的年份）
         if "年份" in df.columns:
-            df["年份"] = df["年份"].astype(str).str.strip()
+            # 尝试将年份转为整数，避免字符串格式问题
+            df["年份"] = pd.to_numeric(df["年份"], errors='coerce').fillna(df["年份"]).astype(str).str.strip()
         if "企业名称" in df.columns:
             df["企业名称"] = df["企业名称"].str.strip()
         if "股票代码" in df.columns:
@@ -100,7 +109,7 @@ def load_uploaded_data(uploaded_file):
         st.error(f"❌ 读取数据失败：{str(e)}")
         return pd.DataFrame()
 
-# 获取数据中所有年份
+# 获取数据中所有年份（不限制范围）
 def get_all_years(full_data):
     if "年份" not in full_data.columns:
         st.error("❌ 数据中未找到'年份'列")
@@ -110,15 +119,13 @@ def get_all_years(full_data):
 def main():
     st.title("企业数字化转型指数查询系统")
     
-    # 新增：文件上传功能（替代本地路径）
-    st.subheader("📤 上传数据文件")
-    uploaded_file = st.file_uploader("请上传数字化转型指数的Excel文件", type=["xlsx"])
-    if not uploaded_file:
-        st.info("请先上传Excel数据文件")
+    # 验证文件是否存在
+    if not os.path.exists(DIGITAL_TRANSFORMATION_FILE):
+        st.error(f"❌ 文件不存在：{DIGITAL_TRANSFORMATION_FILE}")
         return
     
-    # 读取上传的数据
-    full_data = load_uploaded_data(uploaded_file)
+    # 读取完整数据
+    full_data = load_full_data(DIGITAL_TRANSFORMATION_FILE)
     if full_data.empty:
         st.error("❌ 数据为空，请检查Excel文件内容")
         return
@@ -129,7 +136,7 @@ def main():
         st.error("❌ 数据中无有效年份")
         return
 
-    # 查询区域（恢复原有逻辑）
+    # 查询区域：调整顺序，股票代码在前
     st.subheader("🔍 企业查询（股票代码/名称）")
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -140,6 +147,7 @@ def main():
         selected_year = st.selectbox("选择查询年份", all_years, index=0)
 
     # 初始化筛选数据
+    filtered_data = full_data.copy()
     company_all_data = pd.DataFrame()
     
     # 优先通过股票代码筛选
@@ -152,10 +160,11 @@ def main():
     # 筛选当前年份数据
     current_year_data = full_data[full_data["年份"] == selected_year].copy()
     
-    # 展示当年数据（恢复原有逻辑）
+    # 展示当年数据
     st.success(f"✅ 已查询{selected_year}年数据（总计{len(current_year_data)}家企业）")
     st.subheader("📋 企业当年详细数据")
     
+    # 筛选当年的匹配数据
     current_filtered_data = current_year_data.copy()
     if stock_code:
         current_filtered_data = current_filtered_data[current_filtered_data["股票代码"] == stock_code.strip()]
@@ -168,70 +177,67 @@ def main():
     else:
         st.info(f"ℹ️ {selected_year}年数据中无匹配企业，请调整查询条件")
 
-    # 全行业平均指数趋势图（恢复原有逻辑）
+    # 全行业平均指数趋势图
     st.subheader("📊 全行业转型指数趋势")
     industry_avg_data = []
     for year in all_years:
         year_data = full_data[full_data["年份"] == year]
-        avg_idx = year_data["数字化转型综合指数"].mean() if ("数字化转型综合指数" in year_data.columns and not year_data.empty) else 0
-        industry_avg_data.append({"年份": year, "平均指数": round(avg_idx, 4)})
+        if not year_data.empty and "数字化转型综合指数" in year_data.columns:  # 字段名改为你的“数字化转型综合指数”
+            avg_idx = year_data["数字化转型综合指数"].mean()
+        else:
+            avg_idx = 0
+        industry_avg_data.append({
+            "年份": year, 
+            "平均指数": round(avg_idx, 4)
+        })
     industry_avg_df = pd.DataFrame(industry_avg_data)
     st.line_chart(industry_avg_df.set_index("年份")["平均指数"], use_container_width=True, color="#2E86AB", height=400)
 
-    # 企业趋势图（恢复+标注功能）
+    # 企业全量趋势图：输入股票代码后自动展示
     if not company_all_data.empty:
-        selected_company = company_all_data["企业名称"].iloc[0] if not company_all_data["企业名称"].empty else "未知企业"
+        # 获取企业名称
+        selected_company = company_all_data["企业名称"].unique()[0] if len(company_all_data["企业名称"].unique()) > 0 else "未知企业"
         
-        # 补全趋势数据
-        full_years_df = pd.DataFrame({"年份": all_years}).astype(str)
+        # 补全所有年份的趋势数据
+        full_years_df = pd.DataFrame({"年份": all_years})
         company_trend = pd.merge(
             full_years_df,
-            company_all_data[["年份", "数字化转型综合指数"]].astype(str),
+            company_all_data[["年份", "数字化转型综合指数"]],  # 字段名改为你的“数字化转型综合指数”
             on="年份",
             how="left"
         ).fillna(0)
-        company_trend["数字化转型综合指数"] = pd.to_numeric(company_trend["数字化转型综合指数"], errors="coerce").fillna(0)
 
-        # 带标注的趋势图（Altair实现）
+        # 展示趋势图（添加选中年份标注）
         st.subheader(f"📈 {selected_company}（{stock_code if stock_code else '未知代码'}）转型指数趋势")
         
-        # 标注数据
-        selected_year_data = company_trend[company_trend["年份"] == str(selected_year)].copy()
-        selected_year_data["标注"] = f"{selected_year}年：{selected_year_data['数字化转型综合指数'].iloc[0]:.2f}"
-
-        # 基础折线
-        base = alt.Chart(company_trend).encode(
-            x=alt.X("年份:O", axis=alt.Axis(labelAngle=-45)),
-            y=alt.Y("数字化转型综合指数:Q", title="数字化转型综合指数")
-        )
-        line = base.mark_line(color="#FF6B6B", strokeWidth=2).mark_point(size=80, color="#FF6B6B")
-
-        # 选中年份标记（红色五角星）
-        highlight = alt.Chart(selected_year_data).mark_point(
-            size=200, shape="star", color="#FF0000", stroke="black", strokeWidth=2
-        ).encode(x="年份:O", y="数字化转型综合指数:Q")
-
-        # 标注文字
-        text = alt.Chart(selected_year_data).mark_text(
-            align="center", baseline="bottom", fontSize=12, fontWeight="bold", color="#FF0000", dy=-10
-        ).encode(x="年份:O", y="数字化转型综合指数:Q", text="标注:N")
-
-        # 参考线
-        rule = alt.Chart(selected_year_data).mark_rule(
-            color="#0000FF", strokeDash=[5,5], strokeWidth=2
-        ).encode(x="年份:O")
-
-        # 组合图表
-        chart = (line + highlight + text + rule).properties(height=500, width="container")
-        st.altair_chart(chart, use_container_width=True)
-
-        # 历年数据+下载功能（恢复原有逻辑）
+        # ======== 仅新增这部分标注代码 ========
+        # 创建带标注的DataFrame
+        company_trend_with_anno = company_trend.copy()
+        # 标记选中年份
+        company_trend_with_anno['查询年份'] = company_trend_with_anno['年份'] == selected_year
+        # 获取选中年份的指数值
+        selected_value = company_trend_with_anno[company_trend_with_anno['查询年份']]['数字化转型综合指数'].iloc[0] if len(company_trend_with_anno[company_trend_with_anno['查询年份']]) > 0 else 0
+        
+        # 先显示原生折线图（保持原有样式）
+        st.line_chart(company_trend.set_index("年份")["数字化转型综合指数"], use_container_width=True, color="#FF6B6B", height=500)
+        
+        # 添加选中年份的文字标注（在图表下方显示）
+        st.markdown(f"""
+        <div style='background-color:#f8f9fa; padding:10px; border-left:5px solid #FF6B6B; margin:10px 0;'>
+        <strong>📌 查询年份标注：</strong> {selected_year}年 数字化转型综合指数 = <span style='color:red; font-size:16px; font-weight:bold;'>{selected_value:.2f}</span>
+        </div>
+        """, unsafe_allow_html=True)
+        # ======== 标注代码结束 ========
+        
+        # 展示历年完整数据
         st.subheader(f"📋 {selected_company} 历年完整数据")
-        display_columns = ["年份", "股票代码", "数字化转型综合指数", "人工智能词频数", "大数据词频数", "云计算词频数", "区块链词频数", "数字技术运用词频数"]
+        display_columns = ["年份", "股票代码", "数字化转型综合指数", "人工智能词频数", "大数据词频数", "云计算词频数", "区块链词频数", "数字技术运用词频数"]  # 字段名同步修改
+        # 筛选存在的列
         display_columns = [col for col in display_columns if col in company_all_data.columns]
         company_detail = company_all_data[display_columns].sort_values("年份").reset_index(drop=True)
         st.dataframe(company_detail, use_container_width=True)
 
+        # 下载功能
         st.subheader("📥 综合报告下载")
         report_text, report_data = generate_company_report(selected_company, company_all_data, company_trend)
         col_r1, col_r2, col_r3 = st.columns(3)

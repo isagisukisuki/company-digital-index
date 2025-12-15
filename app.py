@@ -182,7 +182,7 @@ def main():
     industry_avg_df = pd.DataFrame(industry_avg_data)
     st.line_chart(industry_avg_df.set_index("年份")["平均指数"], use_container_width=True, color="#2E86AB", height=400)
 
-    # 企业趋势图（仅查询年份标红星，其他保持正常折线）
+    # 企业趋势图（仅查询年份显示红色箭头+醒目数值）
     if not company_all_data.empty:
         selected_company = company_all_data["企业名称"].unique()[0] if len(company_all_data["企业名称"].unique()) > 0 else "未知企业"
         stock_code_display = stock_code if stock_code else company_all_data["股票代码"].iloc[0] if "股票代码" in company_all_data.columns else "未知代码"
@@ -196,43 +196,45 @@ def main():
             how="left"
         ).fillna(0)
 
-        # 用Altair实现：仅查询年份标红星
+        # 用Altair实现：仅查询年份显示红色箭头
         st.subheader(f"📈 {selected_company}（{stock_code_display}）转型指数趋势")
         
-        # 1. 正常年份：折线+小圆点
+        # 1. 正常年份：粉色折线+粉色小圆点
         base = alt.Chart(company_trend).encode(
             x=alt.X("年份:O", axis=alt.Axis(labelAngle=-45)),
             y=alt.Y("数字化转型综合指数:Q", title="数字化转型综合指数")
         )
-        # 正常折线+小圆点
         normal_line = base.mark_line(color="#FF6B6B", strokeWidth=2)
         normal_points = base.mark_point(size=60, color="#FF6B6B")
 
-        # 2. 查询年份：红五角星+数值标签
+        # 2. 查询年份：红色箭头+加粗数值（醒目显示）
         selected_data = company_trend[company_trend["年份"] == selected_year]
-        highlight = alt.Chart(selected_data).mark_point(
-            size=200,
-            shape="star",
+        # 红色箭头（形状用"triangle-right"模拟）
+        highlight_arrow = alt.Chart(selected_data).mark_point(
+            size=300,
+            shape="triangle-right",  # 箭头形状
             color="#FF0000",
             stroke="black",
-            strokeWidth=2
+            strokeWidth=2,
+            angle=0  # 箭头朝向
         ).encode(
             x="年份:O",
             y="数字化转型综合指数:Q"
         )
-        # 查询年份的数值标签
-        highlight_text = highlight.mark_text(
-            align="center",
-            baseline="bottom",
-            dy=-10,
+        # 箭头旁的醒目数值（大号粗体）
+        highlight_text = highlight_arrow.mark_text(
+            align="left",
+            baseline="middle",
+            dx=15,  # 文字在箭头右侧
             color="#FF0000",
-            fontWeight="bold"
+            fontWeight="bold",
+            fontSize=14
         ).encode(
             text=alt.Text("数字化转型综合指数:Q", format=".2f")
         )
 
-        # 组合：正常折线+正常点+查询年红星+查询年数值
-        chart = (normal_line + normal_points + highlight + highlight_text).properties(
+        # 组合：正常折线+正常点+查询年红色箭头+查询年数值
+        chart = (normal_line + normal_points + highlight_arrow + highlight_text).properties(
             height=500,
             width="container"
         )

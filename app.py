@@ -4,19 +4,17 @@ import numpy as np
 from io import BytesIO
 from datetime import datetime
 import os
-import plotly.express as px
 import plotly.graph_objects as go
 
 # 全局设置：解决中文显示/对齐问题
 pd.set_option('display.unicode.ambiguous_as_wide', True)
 pd.set_option('display.unicode.east_asian_width', True)
 
-# ====================== 路径配置（已按你的需求修改）======================
-DIGITAL_TRANSFORMATION_FILE = r"C:\Users\43474\Desktop\大数据\数字化转型指数分析结果.xlsx"  # 你的数据文件路径
-# （注：原代码中WORD_FREQ_FILE等未实际使用，若不需要可保留或删除）
-WORD_FREQ_FILE = r"C:\Users\43474\Desktop\大数据\数字化转型指数分析结果.xlsx"  # 若需要可同步修改
-PY_FILE_PATH = r"C:\Users\43474\Desktop\大数据\app.py"  # 若你的app.py在这个路径，同步修改
-ROOT_FOLDER = r"C:\Users\43474\Desktop\大数据"  # 数据所在文件夹
+# ====================== 路径配置（请根据实际情况修改）======================
+DIGITAL_TRANSFORMATION_FILE = r"C:\Users\43474\Desktop\大数据\数字化转型指数分析结果.xlsx"
+WORD_FREQ_FILE = r"C:\Users\43474\Desktop\大数据\数字化转型指数分析结果.xlsx"
+PY_FILE_PATH = r"C:\Users\43474\Desktop\大数据\app.py"
+ROOT_FOLDER = r"C:\Users\43474\Desktop\大数据"
 # =====================================================================
 
 # 工具函数：生成Excel下载文件
@@ -34,7 +32,7 @@ def generate_company_report(company_name, company_data, full_trend_data):
     total_years = len(available_years)
     
     index_analysis = {"max_index":0, "max_year":"无", "avg_index":0, "latest_index":0, "trend":"无数据"}
-    if "数字化转型综合指数" in company_data.columns and not company_data.empty:  # 字段名改为你的“数字化转型综合指数”
+    if "数字化转型综合指数" in company_data.columns and not company_data.empty:
         max_val = company_data["数字化转型综合指数"].max()
         max_year_df = company_data[company_data["数字化转型综合指数"] == max_val]
         index_analysis["max_index"] = round(max_val, 2)
@@ -95,13 +93,12 @@ def load_full_data(file_path):
     try:
         df = pd.read_excel(
             file_path,
-            sheet_name="Sheet1",  # 若你的工作表不是Sheet1，需改为实际名称（比如图中显示的“2023”）
+            sheet_name="Sheet1",  # 请改为实际工作表名称（如“2023”）
             engine="openpyxl"
         )
-        # 清洗数据（兼容文本/数字格式的年份）
+        # 清洗数据（强制将年份转为字符串，避免类型不匹配）
         if "年份" in df.columns:
-            # 尝试将年份转为整数，避免字符串格式问题
-            df["年份"] = pd.to_numeric(df["年份"], errors='coerce').fillna(df["年份"]).astype(str).str.strip()
+            df["年份"] = df["年份"].astype(str).str.strip()
         if "企业名称" in df.columns:
             df["企业名称"] = df["企业名称"].str.strip()
         if "股票代码" in df.columns:
@@ -149,13 +146,12 @@ def main():
         selected_year = st.selectbox("选择查询年份", all_years, index=0)
 
     # 初始化筛选数据
-    filtered_data = full_data.copy()
     company_all_data = pd.DataFrame()
     
-    # 优先通过股票代码筛选
+    # 优先通过股票代码筛选（严格匹配）
     if stock_code:
         company_all_data = full_data[full_data["股票代码"] == stock_code.strip()].copy()
-    # 补充企业名称筛选
+    # 补充企业名称筛选（模糊匹配）
     elif company_name:
         company_all_data = full_data[full_data["企业名称"].str.contains(company_name.strip(), na=False)].copy()
 
@@ -184,96 +180,90 @@ def main():
     industry_avg_data = []
     for year in all_years:
         year_data = full_data[full_data["年份"] == year]
-        if not year_data.empty and "数字化转型综合指数" in year_data.columns:  # 字段名改为你的“数字化转型综合指数”
-            avg_idx = year_data["数字化转型综合指数"].mean()
-        else:
-            avg_idx = 0
-        industry_avg_data.append({
-            "年份": year, 
-            "平均指数": round(avg_idx, 4)
-        })
+        avg_idx = year_data["数字化转型综合指数"].mean() if ("数字化转型综合指数" in year_data.columns and not year_data.empty) else 0
+        industry_avg_data.append({"年份": year, "平均指数": round(avg_idx, 4)})
     industry_avg_df = pd.DataFrame(industry_avg_data)
     st.line_chart(industry_avg_df.set_index("年份")["平均指数"], use_container_width=True, color="#2E86AB", height=400)
 
-    # 企业全量趋势图：输入股票代码后自动展示
+    # 企业全量趋势图：输入股票代码/名称后自动展示（修复标注部分）
     if not company_all_data.empty:
         # 获取企业名称
-        selected_company = company_all_data["企业名称"].unique()[0] if len(company_all_data["企业名称"].unique()) > 0 else "未知企业"
+        selected_company = company_all_data["企业名称"].iloc[0] if not company_all_data["企业名称"].empty else "未知企业"
         
-        # 补全所有年份的趋势数据
-        full_years_df = pd.DataFrame({"年份": all_years})
+        # 补全所有年份的趋势数据（确保年份为字符串，与selected_year类型一致）
+        full_years_df = pd.DataFrame({"年份": all_years}).astype(str)
         company_trend = pd.merge(
             full_years_df,
-            company_all_data[["年份", "数字化转型综合指数"]],  # 字段名改为你的“数字化转型综合指数”
+            company_all_data[["年份", "数字化转型综合指数"]].astype(str),
             on="年份",
             how="left"
         ).fillna(0)
+        # 将指数转回数值类型
+        company_trend["数字化转型综合指数"] = pd.to_numeric(company_trend["数字化转型综合指数"], errors="coerce").fillna(0)
 
-        # 展示趋势图（修改部分：使用plotly创建带标注的折线图）
+        # 展示趋势图（强制显示选中年份的标注）
         st.subheader(f"📈 {selected_company}（{stock_code if stock_code else '未知代码'}）转型指数趋势")
         
-        # 创建plotly图表
+        # 创建Plotly图表
         fig = go.Figure()
         
-        # 添加主趋势线
+        # 绘制基础折线
         fig.add_trace(go.Scatter(
             x=company_trend["年份"],
             y=company_trend["数字化转型综合指数"],
-            mode='lines+markers',
-            name='转型指数',
+            mode="lines+markers",
+            name="转型指数",
             line=dict(color="#FF6B6B", width=2),
             marker=dict(size=8, color="#FF6B6B")
         ))
         
-        # 找到选中年份的数据点并添加标注
-        selected_year_data = company_trend[company_trend["年份"] == selected_year]
-        if not selected_year_data.empty:
-            selected_value = selected_year_data["数字化转型综合指数"].iloc[0]
-            
-            # 添加选中年份的特殊标记点
-            fig.add_trace(go.Scatter(
-                x=[selected_year],
-                y=[selected_value],
-                mode='markers+text',
-                name=f'{selected_year}年',
-                marker=dict(
-                    size=15,
-                    color="#FF4757",
-                    symbol="star",
-                    line=dict(width=2, color="black")
-                ),
-                text=[f' {selected_year}年: {selected_value:.2f}'],
-                textposition="top right",
-                textfont=dict(size=12, color="#FF4757", weight="bold")
-            ))
-            
-            # 添加垂直参考线
-            fig.add_vline(
-                x=selected_year,
-                line=dict(color="#70A1FF", dash="dash", width=2),
-                annotation_text=f"{selected_year}年",
-                annotation_position="top",
-                annotation_font=dict(size=10, color="#70A1FF")
-            )
+        # 强制匹配选中年份（无论是否有数据）
+        selected_year_str = str(selected_year)
+        # 获取选中年份的指数值
+        selected_idx = company_trend[company_trend["年份"] == selected_year_str]["数字化转型综合指数"].iloc[0] if not company_trend[company_trend["年份"] == selected_year_str].empty else 0
         
-        # 设置图表样式
+        # 添加选中年份的特殊标记
+        fig.add_trace(go.Scatter(
+            x=[selected_year_str],
+            y=[selected_idx],
+            mode="markers+text",
+            name=f"{selected_year_str}年数据",
+            marker=dict(
+                size=18,
+                color="#FF0000",  # 红色突出
+                symbol="star",
+                line=dict(width=2, color="#000000")  # 黑色边框
+            ),
+            text=[f"{selected_year_str}年：{selected_idx:.2f}"],
+            textposition="top center",
+            textfont=dict(size=14, color="#FF0000", weight="bold")
+        ))
+        
+        # 添加垂直参考线
+        fig.add_vline(
+            x=selected_year_str,
+            line=dict(color="#0000FF", dash="dash", width=2),
+            annotation_text=f"查询年份：{selected_year_str}",
+            annotation_position="top right",
+            annotation_font=dict(size=12, color="#0000FF")
+        )
+        
+        # 图表样式设置
         fig.update_layout(
             xaxis_title="年份",
             yaxis_title="数字化转型综合指数",
             height=500,
+            xaxis_tickangle=-45,  # 年份标签旋转，避免重叠
             showlegend=True,
-            hovermode="x unified",
-            plot_bgcolor="rgba(0,0,0,0)",
-            paper_bgcolor="rgba(0,0,0,0)"
+            plot_bgcolor="white"
         )
         
-        # 在streamlit中显示plotly图表
+        # 在Streamlit中显示图表
         st.plotly_chart(fig, use_container_width=True)
-        
+
         # 展示历年完整数据
         st.subheader(f"📋 {selected_company} 历年完整数据")
-        display_columns = ["年份", "股票代码", "数字化转型综合指数", "人工智能词频数", "大数据词频数", "云计算词频数", "区块链词频数", "数字技术运用词频数"]  # 字段名同步修改
-        # 筛选存在的列
+        display_columns = ["年份", "股票代码", "数字化转型综合指数", "人工智能词频数", "大数据词频数", "云计算词频数", "区块链词频数", "数字技术运用词频数"]
         display_columns = [col for col in display_columns if col in company_all_data.columns]
         company_detail = company_all_data[display_columns].sort_values("年份").reset_index(drop=True)
         st.dataframe(company_detail, use_container_width=True)

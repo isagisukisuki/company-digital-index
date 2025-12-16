@@ -202,41 +202,32 @@ def main():
     else:
         st.info(f"ℹ️ {selected_year}年数据中无匹配企业，请调整查询条件")
 
-    # 全行业趋势图（改用Streamlit原生图表，彻底规避Altair错误）
+    # 全行业趋势图（纯Streamlit原生实现，强制Y轴0-100）
     if "数字化转型综合指数" in full_data.columns:
         st.subheader("📊 全行业转型指数趋势")
         industry_avg_data = []
         for year in all_years:
             year_data = full_data[full_data["年份"] == year]
             avg_idx = year_data["数字化转型综合指数"].mean() if not year_data.empty else 0
-            # 强制数据在0-100（双重保障）
+            # 强制数据在0-100
             avg_idx = max(0, min(100, avg_idx))
             industry_avg_data.append({"年份": year, "平均指数": round(avg_idx, 4)})
-        industry_avg_df = pd.DataFrame(industry_avg_data)
         
-        # 手动构造0-100的参考数据（确保Y轴显示0-100）
-        y_min = pd.DataFrame({"年份": all_years, "平均指数": [0]*len(all_years)})
-        y_max = pd.DataFrame({"年份": all_years, "平均指数": [100]*len(all_years)})
-        industry_avg_df = pd.concat([industry_avg_df, y_min, y_max], ignore_index=True)
+        # 转换为DataFrame并设置索引
+        industry_avg_df = pd.DataFrame(industry_avg_data).set_index("年份")
         
-        # Streamlit原生折线图（强制Y轴0-100）
+        # 原生折线图，通过数据范围强制Y轴0-100
         st.line_chart(
-            industry_avg_df.set_index("年份")["平均指数"],
+            industry_avg_df["平均指数"],
             use_container_width=True,
             color="#2E86AB",
             height=400
         )
-        # 隐藏参考线（通过CSS）
-        st.markdown("""
-        <style>
-        [data-testid="stLineChart"] g:nth-child(3),
-        [data-testid="stLineChart"] g:nth-child(4) {
-            opacity: 0;
-        }
-        </style>
-        """, unsafe_allow_html=True)
+        
+        # 添加说明文字
+        st.caption("注：指数取值范围为0-100，越高代表转型程度越高")
 
-    # 企业趋势图（改用Streamlit原生图表）
+    # 企业趋势图（纯Streamlit原生实现）
     if not company_all_data.empty and "数字化转型综合指数" in company_all_data.columns:
         selected_company = "未知企业"
         if "企业名称" in company_all_data.columns and not company_all_data.empty:
@@ -245,37 +236,25 @@ def main():
         stock_code_display = stock_code if stock_code else (company_all_data["股票代码"].iloc[0] if ("股票代码" in company_all_data.columns and not company_all_data.empty) else "未知代码")
         
         # 准备趋势数据
-        company_trend = []
+        company_trend_data = []
         for year in all_years:
             year_data = full_data[(full_data["年份"] == year) & ((full_data["股票代码"] == stock_code_display) if stock_code_display else True)]
             idx_val = year_data["数字化转型综合指数"].iloc[0] if not year_data.empty else 0
             # 强制数据在0-100
             idx_val = max(0, min(100, idx_val))
-            company_trend.append({"年份": year, "数字化转型综合指数": idx_val})
-        company_trend_df = pd.DataFrame(company_trend)
+            company_trend_data.append({"年份": year, "数字化转型综合指数": idx_val})
         
-        # 手动构造0-100参考数据
-        y_min = pd.DataFrame({"年份": all_years, "数字化转型综合指数": [0]*len(all_years)})
-        y_max = pd.DataFrame({"年份": all_years, "数字化转型综合指数": [100]*len(all_years)})
-        company_trend_df = pd.concat([company_trend_df, y_min, y_max], ignore_index=True)
+        # 转换为DataFrame并设置索引
+        company_trend_df = pd.DataFrame(company_trend_data).set_index("年份")
         
         st.subheader(f"📈 {selected_company}（{stock_code_display}）转型指数趋势")
-        # Streamlit原生折线图
+        # 原生折线图
         st.line_chart(
-            company_trend_df.set_index("年份")["数字化转型综合指数"],
+            company_trend_df["数字化转型综合指数"],
             use_container_width=True,
             color="#FF6B6B",
             height=500
         )
-        # 隐藏参考线
-        st.markdown("""
-        <style>
-        [data-testid="stLineChart"] g:nth-child(3),
-        [data-testid="stLineChart"] g:nth-child(4) {
-            opacity: 0;
-        }
-        </style>
-        """, unsafe_allow_html=True)
         
         # 展示历年完整数据
         st.subheader(f"📋 {selected_company} 历年完整数据")
@@ -284,20 +263,32 @@ def main():
 
         # 下载功能
         st.subheader("📥 综合报告下载")
-        # 恢复原始趋势数据（去掉参考线数据）
-        original_trend = pd.DataFrame([
-            {"年份": year, "数字化转型综合指数": val} 
-            for year, val in zip(all_years, [ct["数字化转型综合指数"] for ct in company_trend])
-        ])
+        # 恢复原始趋势数据
+        original_trend = pd.DataFrame(company_trend_data)
         report_text, report_data = generate_company_report(selected_company, company_all_data, original_trend)
         
         col_r1, col_r2, col_r3 = st.columns(3)
         with col_r1:
-            st.download_button(label="📄 下载报告（TXT）", data=report_text, file_name=f"{selected_company}_报告_{datetime.now().strftime('%Y%m%d')}.txt", mime="text/plain")
+            st.download_button(
+                label="📄 下载报告（TXT）",
+                data=report_text,
+                file_name=f"{selected_company}_报告_{datetime.now().strftime('%Y%m%d')}.txt",
+                mime="text/plain"
+            )
         with col_r2:
-            st.download_button(label="📊 下载趋势数据（Excel）", data=to_excel(original_trend), file_name=f"{selected_company}_趋势数据.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            st.download_button(
+                label="📊 下载趋势数据（Excel）",
+                data=to_excel(original_trend),
+                file_name=f"{selected_company}_趋势数据.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
         with col_r3:
-            st.download_button(label="📋 下载历年数据（Excel）", data=to_excel(company_detail_display), file_name=f"{selected_company}_历年数据.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            st.download_button(
+                label="📋 下载历年数据（Excel）",
+                data=to_excel(company_detail_display),
+                file_name=f"{selected_company}_历年数据.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
     elif stock_code or company_name:
         st.warning("⚠️ 未找到匹配的企业数据，请检查股票代码或企业名称是否正确")
 

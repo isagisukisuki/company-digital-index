@@ -211,7 +211,7 @@ def main():
     else:
         st.info(f"ℹ️ {selected_year}年数据中无匹配企业，请调整查询条件")
 
-    # 全行业趋势图（Y轴固定0-100）
+    # 全行业趋势图（改用Altair，强制Y轴0-100）
     if "数字化转型综合指数" in full_data.columns:
         st.subheader("📊 全行业转型指数趋势")
         industry_avg_data = []
@@ -220,14 +220,35 @@ def main():
             avg_idx = year_data["数字化转型综合指数"].mean() if not year_data.empty else 0
             industry_avg_data.append({"年份": year, "平均指数": round(avg_idx, 4)})
         industry_avg_df = pd.DataFrame(industry_avg_data)
-        # 折线图Y轴固定0-100
-        st.line_chart(
-            industry_avg_df.set_index("年份")["平均指数"],
-            use_container_width=True,
+        
+        # 改用Altair绘制全行业趋势图，强制Y轴0-100
+        industry_chart = alt.Chart(industry_avg_df).mark_line(
             color="#2E86AB",
+            strokeWidth=2,
+            point=alt.Point(size=60, color="#2E86AB")
+        ).encode(
+            x=alt.X("年份:O", axis=alt.Axis(labelAngle=-45)),
+            y=alt.Y(
+                "平均指数:Q",
+                title="数字化转型综合指数",
+                scale=alt.Scale(domain=[0, 100])  # 强制Y轴0-100
+            ),
+            tooltip=[
+                alt.Tooltip("年份:O", title="年份"),
+                alt.Tooltip("平均指数:Q", title="平均指数", format=".2f")
+            ]
+        ).properties(
             height=400,
-            y_axis=dict(range=[0, 100])
+            width="container"
+        ).configure_axis(
+            labelFont="SimHei",
+            titleFont="SimHei"
+        ).configure_legend(
+            labelFont="SimHei",
+            titleFont="SimHei"
         )
+        
+        st.altair_chart(industry_chart, use_container_width=True)
 
     # 企业趋势图（Y轴固定0-100，标题不含百分制）
     if not company_all_data.empty and "数字化转型综合指数" in company_all_data.columns:
@@ -298,6 +319,12 @@ def main():
         chart = (normal_line + normal_points + line_to_point + highlight_arrow + highlight_text).properties(
             height=500,
             width="container"
+        ).configure_axis(
+            labelFont="SimHei",
+            titleFont="SimHei"
+        ).configure_legend(
+            labelFont="SimHei",
+            titleFont="SimHei"
         )
         st.altair_chart(chart, use_container_width=True)
         

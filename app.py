@@ -1,3 +1,4 @@
+# app.py - 上市公司数字化转型指数查询系统（百分制）
 from pathlib import Path
 import streamlit as st
 import pandas as pd
@@ -6,7 +7,7 @@ import plotly.graph_objects as go
 import numpy as np
 
 # ====================== 核心配置（按你的要求修改）======================
-# 文件路径（替换为你指定的文件）
+# 文件路径（替换为你指定的文件，与app.py同目录）
 DATA_FILE = Path(__file__).parent / "数字化转型指数分析结果.xlsx"
 # 词频相关列名（按你的要求保留）
 WORD_FREQ_COLS = [
@@ -264,4 +265,5 @@ st.markdown("""
 💡 数据来源：数字化转型指数分析结果.xlsx
 📅 更新时间：2025年
 📌 指数规则：0-100百分制（按年度归一化）
+🔧 运行命令：streamlit run app.py
 """)

@@ -196,15 +196,17 @@ def main():
     for year in all_years:
         avg_idx = full_data[full_data["年份"]==year]["数字化转型综合指数"].mean()
         industry_trend.append({"年份": year, "平均指数": avg_idx})
-    industry_df = pd.DataFrame(industry_trend).set_index("年份")
+    industry_df = pd.DataFrame(industry_trend)
     
-    # 原生折线图（无Altair）
-    st.line_chart(
-        industry_df["平均指数"],
-        color="#2E86AB",
-        height=400,
-        use_container_width=True
-    )
+    # 使用Streamlit原生折线图
+    if not industry_df.empty:
+        # 准备图表数据
+        chart_data = industry_df.set_index("年份")[["平均指数"]]
+        st.line_chart(
+            chart_data,
+            height=400,
+            use_container_width=True
+        )
     
     # 8. 企业趋势分析（仅当找到企业时）
     if not company_data.empty:
@@ -220,14 +222,18 @@ def main():
             comp_trend.append({"年份": year, "数字化转型综合指数": idx_val})
         comp_trend_df = pd.DataFrame(comp_trend)
         
-        # 展示企业趋势图
-        st.subheader(f"📈 {comp_name}（{comp_code}）指数趋势")
-        st.line_chart(
-            comp_trend_df.set_index("年份")["数字化转型综合指数"],
-            color="#FF6B6B",
-            height=400,
-            use_container_width=True
-        )
+        # 展示企业趋势图（如果有多年的数据）
+        if len(comp_trend_df) > 1:
+            st.subheader(f"📈 {comp_name}（{comp_code}）指数趋势")
+            chart_data = comp_trend_df.set_index("年份")[["数字化转型综合指数"]]
+            st.line_chart(
+                chart_data,
+                height=400,
+                use_container_width=True
+            )
+        elif len(comp_trend_df) == 1:
+            st.subheader(f"📊 {comp_name}（{comp_code}）指数信息")
+            st.info(f"当前只有一年的数据：{comp_trend_df['数字化转型综合指数'].iloc[0]:.2f}")
         
         # 展示企业历年数据
         st.subheader(f"📋 {comp_name} 历年完整数据")
@@ -260,6 +266,25 @@ def main():
                 file_name=f"{comp_name}_历年数据.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
+    
+    # 9. 侧边栏统计信息
+    with st.sidebar:
+        st.header("📊 数据概览")
+        st.metric("数据年份数", len(all_years))
+        st.metric("企业总数", len(full_data["股票代码"].unique()))
+        st.metric("数据总条数", len(full_data))
+        
+        st.header("🔧 数据操作")
+        if st.button("🔄 重新加载数据"):
+            st.rerun()
+        
+        st.header("📖 使用说明")
+        st.info("""
+        1. 通过股票代码或企业名称查询
+        2. 选择年份查看特定年份数据
+        3. 选中企业后可查看趋势分析
+        4. 支持数据下载功能
+        """)
 
 # ====================== 运行程序 =======================
 if __name__ == "__main__":
